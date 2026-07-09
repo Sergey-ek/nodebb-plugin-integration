@@ -1,6 +1,53 @@
 {
     "id": "nodebb-plugin-integration",
     "name": "NodeBB Integration Layer",
-    "description": "Integration API and AI/MCP bridge for NodeBB",
-    "library": "./library.js"
+    "description": "AI integration layer for NodeBB with MCP server, semantic search and knowledge pipeline",
+
+    "url": "https://github.com/Sergey-ek/nodebb-plugin-integration",
+
+    "version": "0.1.0",
+
+    "main": "library.js",
+
+    "compatibility": {
+
+        "nodebb": "^4.0.0"
+
+    },
+
+
+    "hooks": [
+
+        {
+            "hook": "static:app.load",
+
+            "method": "init"
+        },
+
+
+        {
+            "hook": "action:post.save",
+
+            "method": "onPostCreate"
+        },
+
+
+        {
+            "hook": "action:topic.save",
+
+            "method": "onTopicCreate"
+        }
+
+    ],
+
+
+    "modules": {
+
+        "middleware": [
+
+            "routes"
+        ]
+
+    }
+
 }
