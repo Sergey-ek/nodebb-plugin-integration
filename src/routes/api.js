@@ -15,7 +15,7 @@ HTTP API routes
 
 
 const Meta =
-require("../nodebb/meta.js");
+require("../nodebb/meta");
 
 const Search =
 require("../ai/search");
