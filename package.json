@@ -1,0 +1,7 @@
+{
+    "name": "nodebb-plugin-integration",
+    "version": "0.1.0",
+    "description": "Integration layer for NodeBB",
+    "main": "library.js",
+    "license": "MIT"
+}
