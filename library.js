@@ -5,13 +5,8 @@ const Routes =
 require("./lib/routes");
 
 
-const Indexer =
-require("./lib/knowledge/indexer");
-
-
-
-const Posts =
-require.main.require("./src/posts");
+const Events =
+require("./lib/events");
 
 
 
@@ -20,13 +15,29 @@ const Plugin = {};
 
 
 
+/*
+ * Plugin initialization
+ */
 
 Plugin.init = function(params, callback){
 
 
-    Routes.init(
-        params.router
+    const router =
+        params.router;
+
+
+    Routes.init(router);
+
+
+
+    Events.init();
+
+
+
+    console.log(
+        "[NodeBB Integration] initialized"
     );
+
 
 
     callback();
@@ -38,25 +49,18 @@ Plugin.init = function(params, callback){
 
 
 
-
 /*
- * New post event
+ * Called when post is created
  */
 
 Plugin.onPostCreate =
-async function(post){
+async function(data){
 
 
-    try {
+    try{
 
 
-        const data =
-            await Posts.getPostData(
-                post.pid
-            );
-
-
-        await Indexer.indexPost(
+        await Events.postCreated(
             data
         );
 
@@ -67,42 +71,49 @@ async function(post){
 
 
         console.error(
-            "[Integration Index Error]",
+            "[NodeBB Integration]",
             err
         );
 
 
     }
 
-
 };
-
-
 
 
 
 
 
 /*
- * New topic event
+ * Called when topic is created
  */
 
 Plugin.onTopicCreate =
-async function(topic){
+async function(data){
 
 
-    console.log(
+    try{
 
-        "[Integration] New topic:",
 
-        topic.tid
+        await Events.topicCreated(
+            data
+        );
 
-    );
 
+    }
+
+    catch(err){
+
+
+        console.error(
+            "[NodeBB Integration]",
+            err
+        );
+
+
+    }
 
 };
-
-
 
 
 

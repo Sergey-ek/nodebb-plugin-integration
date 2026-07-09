@@ -1,47 +1,39 @@
 {
   "name": "nodebb-plugin-integration",
   "version": "0.1.0",
-  "description": "AI integration layer for NodeBB forums with MCP and semantic search support",
+  "description": "AI integration layer for NodeBB forums with MCP, semantic search and knowledge pipeline",
   "main": "library.js",
   "license": "MIT",
-
   "repository": {
     "type": "git",
     "url": "https://github.com/Sergey-ek/nodebb-plugin-integration.git"
   },
-
   "keywords": [
     "nodebb",
-    "plugin",
+    "nodebb-plugin",
     "ai",
     "mcp",
     "model-context-protocol",
     "rag",
     "qdrant",
     "embeddings",
-    "semantic-search"
+    "semantic-search",
+    "knowledge-base"
   ],
-
   "engines": {
-    "node": ">=18"
+    "node": ">=20"
   },
-
   "scripts": {
-
-    "test": "node --check lib/routes.js && node --check lib/mcp/server.js && node --check lib/mcp/tools.js && node --check lib/knowledge/indexer.js",
-
-    "check": "npm test"
-
+    "test":  "mocha test/*.test.js",
+    "check": "node --check library.js && node --check lib/routes.js && node --check lib/mcp/server.js && node --check lib/mcp/tools.js",
+    "pretest": "npm run check"
   },
-
   "dependencies": {
-
-    "@modelcontextprotocol/sdk": "^1.0.0"
-
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@qdrant/js-client-rest": "^1.12.0",
+    "openai": "^6.45.0"
   },
-
   "devDependencies": {
-
+    "mocha": "^10.8.2"
   }
-
 }
