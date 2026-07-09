@@ -1,33 +1,39 @@
 services:
 
 
-  mongodb:
+  redis:
 
-    image: mongo:7
 
-    container_name: nodebb-mongodb
+    image: redis:7-alpine
+
+
+    container_name: nodebb-redis
+
 
     restart: unless-stopped
 
 
-    environment:
+    command:
 
-      MONGO_INITDB_ROOT_USERNAME: nodebb
+      - redis-server
+      - --appendonly
+      - yes
+      - --requirepass
+      - nodebb_redis_password
 
-      MONGO_INITDB_ROOT_PASSWORD: nodebb_password
-
-
-      MONGO_INITDB_DATABASE: nodebb
 
 
     volumes:
 
-      - mongodb_data:/data/db
+
+      - redis_data:/data
+
 
 
     networks:
 
       - nodebb-network
+
 
 
 
@@ -48,13 +54,16 @@ services:
 
     depends_on:
 
-      - mongodb
+
+      - redis
 
 
 
     ports:
 
+
       - "4567:4567"
+
 
 
 
@@ -62,31 +71,28 @@ services:
 
 
       NODEBB_URL:
+
         http://localhost:4567
 
 
       DATABASE:
-        mongo
+
+        redis
 
 
-      MONGO_HOST:
-        mongodb
+      REDIS_HOST:
+
+        redis
 
 
-      MONGO_PORT:
-        27017
+      REDIS_PORT:
+
+        6379
 
 
-      MONGO_DATABASE:
-        nodebb
+      REDIS_PASSWORD:
 
-
-      MONGO_USERNAME:
-        nodebb
-
-
-      MONGO_PASSWORD:
-        nodebb_password
+        nodebb_redis_password
 
 
 
@@ -97,15 +103,16 @@ services:
 
 
 
-      # локальный плагин разработки
-
       - ./:/opt/nodebb/node_modules/nodebb-plugin-integration
 
 
 
     networks:
 
+
       - nodebb-network
+
+
 
 
 
@@ -115,14 +122,19 @@ services:
 
 
     image:
+
       qdrant/qdrant:latest
 
 
+
     container_name:
+
       nodebb-qdrant
 
 
+
     restart:
+
       unless-stopped
 
 
@@ -154,31 +166,37 @@ services:
 
 
 
-  mongo-express:
+
+  redis-commander:
 
 
     image:
-      mongo-express:latest
+
+      rediscommander/redis-commander:latest
 
 
 
     container_name:
-      nodebb-mongo-express
+
+      nodebb-redis-ui
 
 
 
     restart:
+
       unless-stopped
 
 
 
     depends_on:
 
-      - mongodb
+
+      - redis
 
 
 
     ports:
+
 
       - "8081:8081"
 
@@ -187,25 +205,14 @@ services:
     environment:
 
 
-      ME_CONFIG_MONGODB_ADMINUSERNAME:
+      REDIS_HOSTS:
 
-        nodebb
-
-
-
-      ME_CONFIG_MONGODB_ADMINPASSWORD:
-
-        nodebb_password
-
-
-
-      ME_CONFIG_MONGODB_SERVER:
-
-        mongodb
+        local:redis:6379:0:nodebb_redis_password
 
 
 
     networks:
+
 
       - nodebb-network
 
@@ -217,7 +224,7 @@ services:
 volumes:
 
 
-  mongodb_data:
+  redis_data:
 
 
   nodebb_data:
@@ -236,4 +243,5 @@ networks:
 
 
     driver:
+
       bridge
