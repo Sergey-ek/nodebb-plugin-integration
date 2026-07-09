@@ -1,49 +1,86 @@
 {
-    "id": "nodebb-plugin-integration",
+"id": "nodebb-plugin-integration",
 
-    "name": "NodeBB Integration Layer",
+"name": "NodeBB Integration Layer",
 
-    "description":
-    "AI integration layer with MCP and semantic search",
+"description": "AI integration layer for NodeBB with MCP, semantic search and RAG pipeline",
 
-    "url":
-    "https://github.com/Sergey-ek/nodebb-plugin-integration",
+"version": "0.2.0",
 
-    "version":
-    "0.1.0",
+"main": "library.js",
 
-    "main":
-    "library.js",
+"compatibility": {
 
+"nodebb": "^3.0.0"
 
-    "hooks": [
+},
 
-        {
-            "hook":
-            "static:app.load",
+"hooks": [
 
-            "method":
-            "init"
-        },
+{
+  "hook": "static:app.load",
+
+  "method": "init"
+},
 
 
-        {
-            "hook":
-            "action:post.save",
+{
+  "hook": "action:post.save",
 
-            "method":
-            "onPostCreate"
-        },
+  "method": "onPostSave"
+},
 
 
-        {
-            "hook":
-            "action:topic.save",
+{
+  "hook": "action:topic.save",
 
-            "method":
-            "onTopicCreate"
-        }
+  "method": "onTopicSave"
+}
 
-    ]
+],
+
+
+
+
+"routes": [
+
+{
+  "route": "/api/v3/integration/info",
+
+  "method": "GET",
+
+  "handler": "apiInfo"
+},
+
+
+{
+  "route": "/api/v3/integration/search",
+
+  "method": "POST",
+
+  "handler": "apiSearch"
+}
+
+],
+
+
+
+
+"settings": {
+
+"url": "",
+
+"apiKey": "",
+
+"aiProvider": "fake",
+
+"qdrantUrl": "http://localhost:6333",
+
+"collection": "nodebb_knowledge"
+
+}
+
+
+
 
 }

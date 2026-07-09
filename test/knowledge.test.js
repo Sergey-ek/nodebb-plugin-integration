@@ -2,12 +2,11 @@
 
 
 const assert =
-require("assert");
+    require("assert");
 
 
 const Indexer =
-require("../lib/knowledge/indexer");
-
+    require("../src/ai/indexer");
 
 
 

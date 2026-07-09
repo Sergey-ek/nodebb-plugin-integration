@@ -16,15 +16,26 @@ services:
     command:
 
       - redis-server
+
       - --appendonly
-      - yes
+
+      - "yes"
+
       - --requirepass
-      - nodebb_redis_password
+
+      - ${REDIS_PASSWORD}
+
+
+
+    environment:
+
+      REDIS_PASSWORD:
+
+        ${REDIS_PASSWORD}
 
 
 
     volumes:
-
 
       - redis_data:/data
 
@@ -36,13 +47,34 @@ services:
 
 
 
+    healthcheck:
+
+      test:
+
+        [
+          "CMD",
+          "redis-cli",
+          "-a",
+          "${REDIS_PASSWORD}",
+          "ping"
+        ]
+
+      interval: 10s
+
+      timeout: 5s
+
+      retries: 5
+
+
+
+
 
 
 
   nodebb:
 
 
-    image: nodebb/docker:latest
+    image: nodebb/docker:3.10
 
 
     container_name: nodebb
@@ -55,7 +87,11 @@ services:
     depends_on:
 
 
-      - redis
+      redis:
+
+        condition: service_healthy
+
+
 
 
 
@@ -63,6 +99,7 @@ services:
 
 
       - "4567:4567"
+
 
 
 
@@ -75,9 +112,11 @@ services:
         http://localhost:4567
 
 
+
       DATABASE:
 
         redis
+
 
 
       REDIS_HOST:
@@ -85,14 +124,18 @@ services:
         redis
 
 
+
       REDIS_PORT:
 
         6379
 
 
+
       REDIS_PASSWORD:
 
-        nodebb_redis_password
+        ${REDIS_PASSWORD}
+
+
 
 
 
@@ -103,7 +146,11 @@ services:
 
 
 
+      # текущий проект как NodeBB plugin
+
       - ./:/opt/nodebb/node_modules/nodebb-plugin-integration
+
+
 
 
 
@@ -121,21 +168,15 @@ services:
   qdrant:
 
 
-    image:
-
-      qdrant/qdrant:latest
+    image: qdrant/qdrant:latest
 
 
-
-    container_name:
-
-      nodebb-qdrant
+    container_name: nodebb-qdrant
 
 
+    restart: unless-stopped
 
-    restart:
 
-      unless-stopped
 
 
 
@@ -149,10 +190,14 @@ services:
 
 
 
+
+
     volumes:
 
 
       - qdrant_data:/qdrant/storage
+
+
 
 
 
@@ -170,28 +215,26 @@ services:
   redis-commander:
 
 
-    image:
-
-      rediscommander/redis-commander:latest
+    image: rediscommander/redis-commander:latest
 
 
-
-    container_name:
-
-      nodebb-redis-ui
+    container_name: nodebb-redis-ui
 
 
+    restart: unless-stopped
 
-    restart:
 
-      unless-stopped
 
 
 
     depends_on:
 
 
-      - redis
+      redis:
+
+        condition: service_healthy
+
+
 
 
 
@@ -202,12 +245,16 @@ services:
 
 
 
+
+
     environment:
 
 
       REDIS_HOSTS:
 
-        local:redis:6379:0:nodebb_redis_password
+        local:redis:6379:0:${REDIS_PASSWORD}
+
+
 
 
 
@@ -215,6 +262,7 @@ services:
 
 
       - nodebb-network
+
 
 
 
@@ -231,6 +279,8 @@ volumes:
 
 
   qdrant_data:
+
+
 
 
 

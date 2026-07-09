@@ -1,660 +1,320 @@
-# nodebb-plugin-integration
-Universal integration layer for NodeBB. Provides REST API, MCP support, AI agents, automation and external integrations.
-
 # NodeBB Integration Layer
 
-AI integration framework for NodeBB forums.
+AI integration layer for NodeBB forums with MCP, semantic search, RAG pipeline and Qdrant vector storage.
 
-**NodeBB Integration Layer** transforms a NodeBB forum into an AI-powered knowledge platform with:
+![Node.js](https://img.shields.io/badge/node-%3E%3D20-green)
+![Tests](https://github.com/Sergey-ek/nodebb-plugin-integration/actions/workflows/test.yml/badge.svg)
+![License](https://img.shields.io/badge/license-MIT-blue)
 
-- REST API access to forum data
-- Model Context Protocol (MCP) support
-- AI semantic search
-- Embedding pipeline
-- Vector database integration
-- Retrieval-Augmented Generation (RAG) capabilities
+## Features
 
-The main purpose of this project is to make forum knowledge available for modern AI assistants.
+* NodeBB integration adapter
+* MCP (Model Context Protocol) server
+* Semantic search
+* RAG knowledge pipeline
+* Qdrant vector database support
+* OpenAI embeddings support
+* Fake embeddings for local development
+* Standalone development mode
+* Automated tests with GitHub Actions
 
----
-
-# Vision
-
-A traditional forum stores knowledge in discussions.
-
-This project adds an AI knowledge layer:
-
-```
-Forum discussions
-
-        |
-
-        v
-
-Knowledge extraction
-
-        |
-
-        v
-
-Embeddings
-
-        |
-
-        v
-
-Vector database
-
-        |
-
-        v
-
-AI assistants
-```
-
-The result is an intelligent forum where users and AI agents can discover knowledge by meaning, not only by keywords.
-
----
-
-# Features
-
-## NodeBB Integration API
-
-Provides access to:
-
-- Forum information
-- Recent topics
-- Full topic content
-- Topic search
-
-
-## MCP Server
-
-Supports the Model Context Protocol.
-
-Compatible with:
-
-- Claude Desktop
-- Cursor
-- MCP-compatible AI agents
-
-
-Available MCP tools:
-
-| Tool | Description |
-|---|---|
-| `forum_info` | Get forum information |
-| `recent_topics` | Get recent topics |
-| `get_topic` | Read complete topic with posts |
-| `search_topics` | Text search |
-| `semantic_search` | AI semantic search |
-
-
----
-
-# Architecture
+## Architecture
 
 ```
-                 AI Client
+                    NodeBB
 
-        Claude / Cursor / Agent
+                      |
+                      |
 
-                    |
+                Integration Layer
 
-                    |
+                      |
+        +-------------+-------------+
 
-              MCP Protocol
+        |                           |
 
-                    |
+      MCP                         AI
 
-                    |
+        |                           |
 
-        NodeBB Integration Layer
+   Tools API                  Embeddings
 
-                    |
+                                    |
 
-        +-----------+-----------+
+                                  Qdrant
 
-        |           |           |
+                                    |
 
-      Topics      Posts      Search
-
-        |
-
-        |
-
- Knowledge Pipeline
-
-        |
-
-        v
-
- Embedding Generator
-
-        |
-
-        v
-
- Qdrant Vector Database
-
-        |
-
-        v
-
- Semantic Search
+                              Knowledge Base
 ```
-
----
-
-# Project Structure
-
-```
-nodebb-plugin-integration
-
-тФЬтФАтФА plugin.json
-тФЬтФАтФА package.json
-тФЬтФАтФА library.js
-тФЬтФАтФА README.md
-тФЬтФАтФА LICENSE
-тФЬтФАтФА CONTRIBUTING.md
-тФЬтФАтФА .env.example
-тФЬтФАтФА docker-compose.yml
-тФВ
-тФФтФАтФА lib
-    |
-    тФЬтФАтФА routes.js
-    |
-    тФЬтФАтФА services
-    |    тФЬтФАтФА forum.js
-    |    тФЬтФАтФА topics.js
-    |    тФЬтФАтФА topic.js
-    |    тФФтФАтФА search.js
-    |
-    тФЬтФАтФА mcp
-    |    тФЬтФАтФА server.js
-    |    тФФтФАтФА tools.js
-    |
-    тФЬтФАтФА events
-    |    тФФтФАтФА index.js
-    |
-    тФФтФАтФА knowledge
-         тФЬтФАтФА embeddings.js
-         тФЬтФАтФА qdrant.js
-         тФЬтФАтФА search.js
-         тФФтФАтФА indexer.js
-```
-
----
-
-# Installation
 
 ## Requirements
 
-- NodeBB
-- Node.js 18+
-- npm
-- Qdrant (optional for semantic search)
-- OpenAI compatible embedding API
+* Node.js >= 20
+* npm >= 10
 
+Optional:
 
----
+* NodeBB
+* Redis
+* Qdrant
+* OpenAI API key
 
-## Install plugin
-
-
-Go to your NodeBB directory:
-
-```bash
-cd node_modules
-```
-
+## Installation
 
 Clone repository:
 
 ```bash
 git clone https://github.com/Sergey-ek/nodebb-plugin-integration.git
-```
 
+cd nodebb-plugin-integration
+```
 
 Install dependencies:
 
 ```bash
-cd nodebb-plugin-integration
-
 npm install
 ```
 
-
-Restart NodeBB:
-
-```bash
-./nodebb restart
-```
-
----
-
-# Configuration
-
 Create environment file:
 
-```
-.env
-```
-
-Example:
-
-```env
-OPENAI_API_KEY=your_api_key
-
-QDRANT_URL=http://localhost:6333
-
-QDRANT_COLLECTION=nodebb_topics
-
-EMBEDDING_MODEL=text-embedding-3-small
+```bash
+cp .env.example .env
 ```
 
----
+## Development mode
 
-# API
-
-Base path:
+By default the project uses fake embeddings:
 
 ```
-/api/integration/v1
+AI_PROVIDER=fake
 ```
 
----
+This allows running tests without:
 
-# Health Check
+* OpenAI
+* Qdrant
+* NodeBB
 
-Request:
+Run diagnostics:
 
-```
-GET /ping
-```
-
-Response:
-
-```json
-{
-  "ok": true,
-  "plugin": "nodebb-plugin-integration"
-}
-```
-
----
-
-# Forum Information
-
-Request:
-
-```
-GET /info
+```bash
+npm run diagnose
 ```
 
 Example:
 
-```json
+```
 {
- "title":"AIBusters",
- "url":"https://aibusters.net",
- "version":"1.x"
-}
-```
-
----
-
-# Recent Topics
-
-Request:
-
-```
-GET /topics/recent?limit=10
-```
-
-Response:
-
-```json
-[
- {
-   "tid":123,
-   "title":"AI Security Research",
-   "author":"user",
-   "replies":15
- }
-]
-```
-
----
-
-# Get Topic
-
-Request:
-
-```
-GET /topics/{tid}
-```
-
-Returns:
-
-- topic metadata
-- category
-- author
-- posts
-- timestamps
-
-
-Example:
-
-```json
-{
- "tid":123,
- "title":"AI Security",
-
- "posts":[
-
-  {
-   "username":"researcher",
-   "content":"Discussion text"
-  }
-
- ]
-}
-```
-
----
-
-# Search Topics
-
-Request:
-
-```
-GET /search?q=AI+security
-```
-
-Returns matching topics.
-
----
-
-# MCP Interface
-
-Endpoint:
-
-```
-POST /api/integration/v1/mcp
-```
-
----
-
-## List available tools
-
-Request:
-
-```json
-{
- "method":"tools/list"
-}
-```
-
-Example response:
-
-```json
-{
- "tools":[
-
-  {
-   "name":"semantic_search",
-   "description":
-   "Search forum knowledge by meaning"
-  }
-
- ]
-}
-```
-
----
-
-## Execute MCP tool
-
-Example:
-
-```json
-{
- "method":"tools/call",
-
- "params":{
-
-  "name":"semantic_search",
-
-  "arguments":{
-
-   "query":
-   "How can AI agents be attacked?"
-
-  }
-
+ environment: "development",
+ embeddings: {
+   provider: "fake",
+   size: 1536
  }
 }
 ```
 
----
+## Testing
 
-# Knowledge Pipeline
+Syntax check:
 
-The plugin can automatically index forum content.
+```bash
+npm run check
+```
+
+Run tests:
+
+```bash
+npm test
+```
+
+Expected:
+
+```
+8 passing
+```
+
+## NodeBB Integration
+
+Configure:
+
+```
+NODEBB_URL=http://localhost:4567
+
+NODEBB_API_KEY=your_token
+```
+
+When running inside NodeBB, the plugin uses native NodeBB modules.
+
+Standalone mode provides safe fallback adapters.
+
+## AI Pipeline
 
 Flow:
 
 ```
-New forum post
+Forum post
 
-        |
+    |
 
-        v
+Embedding generation
 
-NodeBB Event
+    |
 
-        |
+Vector storage
 
-        v
+    |
 
-Knowledge Indexer
+Qdrant similarity search
 
-        |
+    |
 
-        v
+Knowledge retrieval
 
-Clean text
+    |
 
-        |
-
-        v
-
-Create embedding
-
-        |
-
-        v
-
-Store vector
-
-        |
-
-        v
-
-Semantic AI Search
+AI response
 ```
 
----
+Supported providers:
 
-# Vector Database
+### Fake
 
-Currently supported:
+Development mode:
+
+```
+AI_PROVIDER=fake
+```
+
+### OpenAI
+
+Production mode:
+
+```
+AI_PROVIDER=openai
+
+OPENAI_API_KEY=your_key
+```
 
 ## Qdrant
 
+Configure:
 
-Docker example:
+```
+QDRANT_URL=http://localhost:6333
+
+QDRANT_COLLECTION=nodebb_knowledge
+```
+
+The system automatically:
+
+* checks collection;
+* creates collection;
+* stores vectors;
+* performs similarity search.
+
+## MCP Server
+
+Start MCP:
 
 ```bash
-docker compose up -d
+npm run mcp
 ```
 
-
-Collection:
-
-```
-nodebb_topics
-```
-
-
-Embedding size:
+Available tools:
 
 ```
-1536
+get_forum_info
+
+get_post
+
+get_topic
+
+get_user
+
+search_knowledge
 ```
 
-
-Distance:
-
-```
-Cosine
-```
-
----
-
-# Semantic Search
-
-Semantic search allows questions like:
+Example:
 
 ```
-What are the risks of autonomous AI agents?
+search_knowledge
+
+{
+ "query": "installation guide",
+ "limit": 5
+}
 ```
 
-even if the forum posts contain different wording:
+## Project Structure
 
 ```
-AI agent privilege escalation attacks
+.
+├── library.js
+
+├── package.json
+
+├── plugin.json
+
+├── src
+
+│   ├── ai
+
+│   │   ├── embeddings.js
+
+│   │   ├── openai.js
+
+│   │   ├── qdrant.js
+
+│   │   ├── indexer.js
+
+│   │   └── search.js
+
+│   │
+
+│   ├── mcp
+
+│   │   ├── server.js
+
+│   │   └── tools.js
+
+│   │
+
+│   ├── nodebb
+
+│   │   ├── meta.js
+
+│   │   ├── posts.js
+
+│   │   ├── topics.js
+
+│   │   └── users.js
+
+│   │
+
+│   └── config
+
+│       └── index.js
+
+│
+
+└── test
+
+    └── plugin.test.js
 ```
 
-The system searches by meaning instead of exact text.
+## Security
 
----
+Never commit:
 
-# Development
+```
+.env
 
+OPENAI_API_KEY
 
-Clone:
-
-```bash
-git clone https://github.com/Sergey-ek/nodebb-plugin-integration.git
+NODEBB_API_KEY
 ```
 
+## License
 
-Install:
-
-```bash
-npm install
-```
-
-
-Check syntax:
-
-```bash
-node --check lib/routes.js
-```
-
-
----
-
-# Git Workflow
-
-
-Create branch:
-
-```bash
-git checkout -b feature-name
-```
-
-
-Commit:
-
-```bash
-git add .
-
-git commit -m "Description"
-```
-
-
-Push:
-
-```bash
-git push origin feature-name
-```
-
----
-
-# Roadmap
-
-
-## Version 0.1
-
-Completed:
-
-- NodeBB API
-- MCP foundation
-- Topic access
-- Search integration
-
-
-## Version 0.2
-
-Planned:
-
-- Qdrant integration
-- Automatic indexing
-- Embedding pipeline
-
-
-## Version 0.3
-
-Planned:
-
-- AI summaries
-- Knowledge documents
-- RAG pipeline
-
-
-## Version 1.0
-
-Goal:
-
-Complete AI knowledge platform for NodeBB.
-
----
-
-# Security Considerations
-
-The plugin should:
-
-- protect MCP endpoints
-- restrict API access
-- secure API keys
-- validate external requests
-- avoid exposing private forum content
-
-
----
-
-# License
-
-MIT License
-
-
----
-
-# Author
-
-aibusters.net
-
-GitHub: https://github.com/Sergey-ek
+MIT
