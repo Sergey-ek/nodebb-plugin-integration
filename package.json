@@ -1,1 +1,53 @@
-{"name":"nodebb-plugin-integration","version":"0.3.0","description":"AI integration layer for NodeBB forums with MCP, semantic search, RAG and Qdrant knowledge pipeline","main":"library.js","license":"MIT","repository":{"type":"git","url":"https://github.com/Sergey-ek/nodebb-plugin-integration.git"},"keywords":["nodebb","nodebb-plugin","ai","mcp","model-context-protocol","rag","qdrant","embeddings","semantic-search","knowledge-base"],"engines":{"node":">=20"},"scripts":{"test":"cross-env NODE_ENV=test mocha test/*.test.js","check":"node --check library.js && node --check src/routes/index.js && node --check src/routes/api.js && node --check src/mcp/server.js && node --check src/mcp/tools.js","diagnose":"node -e \"console.log(require('./src/config').info())\"","mcp":"node src/mcp/server.js"},"dependencies":{"@modelcontextprotocol/sdk":"^1.0.0","@qdrant/js-client-rest":"^1.12.0","dotenv":"^16.4.7","node-fetch":"^3.3.2","openai":"^6.45.0"},"devDependencies":{"cross-env":"^10.0.0","mocha":"^11.7.6"}}
+{
+  "name": "nodebb-plugin-integration",
+  "version": "0.3.0",
+  "description": "AI integration layer for NodeBB forums with MCP, semantic search, RAG and Qdrant knowledge pipeline",
+  "main": "library.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sergey-ek/nodebb-plugin-integration.git"
+  },
+  "keywords": [
+    "nodebb",
+    "nodebb-plugin",
+    "ai",
+    "mcp",
+    "model-context-protocol",
+    "rag",
+    "qdrant",
+    "embeddings",
+    "semantic-search",
+    "knowledge-base"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "files": [
+    "library.js",
+    "plugin.json",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "test": "cross-env NODE_ENV=test mocha test/*.test.js",
+    "check": "node --check library.js && node --check src/routes/index.js && node --check src/routes/api.js && node --check src/mcp/server.js && node --check src/mcp/tools.js",
+    "diagnose": "node -e \"console.log(require('./src/config').info())\"",
+    "mcp": "node src/mcp/server.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "@qdrant/js-client-rest": "^1.12.0",
+    "dotenv": "^16.4.7",
+    "node-fetch": "^3.3.2",
+    "openai": "^6.45.0"
+  },
+  "devDependencies": {
+    "cross-env": "^10.0.0",
+    "mocha": "^11.7.6"
+  },
+  "nbbpm": {
+    "compatibility": "^4.4.1"
+  }
+}

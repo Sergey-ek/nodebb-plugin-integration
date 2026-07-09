@@ -1,86 +1,23 @@
 {
-"id": "nodebb-plugin-integration",
-
-"name": "NodeBB Integration Layer",
-
-"description": "AI integration layer for NodeBB with MCP, semantic search and RAG pipeline",
-
-"version": "0.2.0",
-
-"main": "library.js",
-
-"compatibility": {
-
-"nodebb": "^3.0.0"
-
-},
-
-"hooks": [
-
-{
-  "hook": "static:app.load",
-
-  "method": "init"
-},
-
-
-{
-  "hook": "action:post.save",
-
-  "method": "onPostSave"
-},
-
-
-{
-  "hook": "action:topic.save",
-
-  "method": "onTopicSave"
-}
-
-],
-
-
-
-
-"routes": [
-
-{
-  "route": "/api/v3/integration/info",
-
-  "method": "GET",
-
-  "handler": "apiInfo"
-},
-
-
-{
-  "route": "/api/v3/integration/search",
-
-  "method": "POST",
-
-  "handler": "apiSearch"
-}
-
-],
-
-
-
-
-"settings": {
-
-"url": "",
-
-"apiKey": "",
-
-"aiProvider": "fake",
-
-"qdrantUrl": "http://localhost:6333",
-
-"collection": "nodebb_knowledge"
-
-}
-
-
-
-
+  "id": "nodebb-plugin-integration",
+  "name": "NodeBB Integration Layer",
+  "description": "AI integration layer for NodeBB with MCP, semantic search, RAG and Qdrant knowledge pipeline",
+  "library": "./library.js",
+  "staticDirs": {
+    "public": "public"
+  },
+  "hooks": [
+    {
+      "hook": "static:app.load",
+      "method": "init"
+    },
+    {
+      "hook": "action:post.save",
+      "method": "onPostSave"
+    },
+    {
+      "hook": "action:topic.save",
+      "method": "onTopicSave"
+    }
+  ]
 }
