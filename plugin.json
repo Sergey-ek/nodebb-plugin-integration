@@ -1,0 +1,6 @@
+{
+    "id": "nodebb-plugin-integration",
+    "name": "NodeBB Integration Layer",
+    "description": "Integration API and AI/MCP bridge for NodeBB",
+    "library": "./library.js"
+}
