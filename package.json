@@ -1,7 +1,47 @@
 {
-    "name": "nodebb-plugin-integration",
-    "version": "0.1.0",
-    "description": "Integration layer for NodeBB",
-    "main": "library.js",
-    "license": "MIT"
+  "name": "nodebb-plugin-integration",
+  "version": "0.1.0",
+  "description": "AI integration layer for NodeBB forums with MCP and semantic search support",
+  "main": "library.js",
+  "license": "MIT",
+
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sergey-ek/nodebb-plugin-integration.git"
+  },
+
+  "keywords": [
+    "nodebb",
+    "plugin",
+    "ai",
+    "mcp",
+    "model-context-protocol",
+    "rag",
+    "qdrant",
+    "embeddings",
+    "semantic-search"
+  ],
+
+  "engines": {
+    "node": ">=18"
+  },
+
+  "scripts": {
+
+    "test": "node --check lib/routes.js && node --check lib/mcp/server.js && node --check lib/mcp/tools.js && node --check lib/knowledge/indexer.js",
+
+    "check": "npm test"
+
+  },
+
+  "dependencies": {
+
+    "@modelcontextprotocol/sdk": "^1.0.0"
+
+  },
+
+  "devDependencies": {
+
+  }
+
 }

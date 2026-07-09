@@ -151,37 +151,37 @@ Available MCP tools:
 ```
 nodebb-plugin-integration
 
-├── plugin.json
-├── package.json
-├── library.js
-├── README.md
-├── LICENSE
-├── CONTRIBUTING.md
-├── .env.example
-├── docker-compose.yml
-│
-└── lib
+тФЬтФАтФА plugin.json
+тФЬтФАтФА package.json
+тФЬтФАтФА library.js
+тФЬтФАтФА README.md
+тФЬтФАтФА LICENSE
+тФЬтФАтФА CONTRIBUTING.md
+тФЬтФАтФА .env.example
+тФЬтФАтФА docker-compose.yml
+тФВ
+тФФтФАтФА lib
     |
-    ├── routes.js
+    тФЬтФАтФА routes.js
     |
-    ├── services
-    |    ├── forum.js
-    |    ├── topics.js
-    |    ├── topic.js
-    |    └── search.js
+    тФЬтФАтФА services
+    |    тФЬтФАтФА forum.js
+    |    тФЬтФАтФА topics.js
+    |    тФЬтФАтФА topic.js
+    |    тФФтФАтФА search.js
     |
-    ├── mcp
-    |    ├── server.js
-    |    └── tools.js
+    тФЬтФАтФА mcp
+    |    тФЬтФАтФА server.js
+    |    тФФтФАтФА tools.js
     |
-    ├── events
-    |    └── index.js
+    тФЬтФАтФА events
+    |    тФФтФАтФА index.js
     |
-    └── knowledge
-         ├── embeddings.js
-         ├── qdrant.js
-         ├── search.js
-         └── indexer.js
+    тФФтФАтФА knowledge
+         тФЬтФАтФА embeddings.js
+         тФЬтФАтФА qdrant.js
+         тФЬтФАтФА search.js
+         тФФтФАтФА indexer.js
 ```
 
 ---
@@ -655,8 +655,6 @@ MIT License
 
 # Author
 
-Sergey-ek
+aibusters.net
 
-GitHub:
-
-https://github.com/Sergey-ek
+GitHub: https://github.com/Sergey-ek
