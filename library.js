@@ -6,166 +6,110 @@
  * Main plugin entry point
  */
 
-require("dotenv").config();
-
 const Config = require("./src/config");
 const Routes = require("./src/routes");
 const Events = require("./src/events");
 const Indexer = require("./src/ai/indexer");
 const MCP = require("./src/mcp/server");
 
-
 const Plugin = {};
 
-
 /**
- * NodeBB hook:
- *
  * static:app.load
  */
-Plugin.init = async function ({ router } = {}) {
+Plugin.init = async function (params = {}) {
 
-    console.log(
-        "[NodeBB Integration] initializing"
-    );
+    console.log("[NodeBB Integration] initializing");
 
+    const { router, middleware } = params;
 
     if (router) {
-
-        Routes.init(
-            router
-        );
-
+        Routes.init(router, middleware);
     } else {
-
-        console.log(
-            "[NodeBB Integration] router unavailable (standalone mode)"
-        );
-
+        console.log("[NodeBB Integration] router unavailable (standalone mode)");
     }
 
-
-    if (
-        Events &&
-        typeof Events.init === "function"
-    ) {
-
+    if (Events && typeof Events.init === "function") {
         await Events.init();
-
     }
 
+    const settings = await Config.get();
 
     if (
-        Config?.mcp?.enabled &&
-        process.env.MCP_AUTOSTART === "true" &&
+        settings.mcpEnabled &&
         MCP &&
         typeof MCP.start === "function"
     ) {
-
-        await MCP.start();
-
-        console.log(
-            "[NodeBB Integration] MCP started"
-        );
-
+        try {
+            await MCP.start();
+            console.log("[NodeBB Integration] MCP server started");
+        } catch (err) {
+            console.error("[NodeBB Integration] MCP start failed:", err.message);
+        }
     }
 
-
-    console.log(
-        "[NodeBB Integration] ready"
-    );
-
+    console.log("[NodeBB Integration] ready");
 };
 
-
 /**
- * NodeBB hook:
- *
  * action:post.save
  */
 Plugin.onPostSave = async function (post) {
 
     try {
 
-        if (
-            Events &&
-            typeof Events.postSave === "function"
-        ) {
-
-            await Events.postSave(
-                post
-            );
-
+        if (Events && typeof Events.postSave === "function") {
+            await Events.postSave(post);
         }
 
-
-        if (
-            Indexer &&
-            typeof Indexer.indexPost === "function"
-        ) {
-
-            await Indexer.indexPost(
-                post
-            );
-
+        if (Indexer && typeof Indexer.indexPost === "function") {
+            await Indexer.indexPost(post);
         }
 
+    } catch (err) {
 
-    } catch (error) {
-
-        console.error(
-            "[Plugin] post save error",
-            error.message
-        );
+        console.error("[Plugin] post save error:", err.message);
 
     }
 
 };
 
-
 /**
- * NodeBB hook:
- *
  * action:topic.save
  */
 Plugin.onTopicSave = async function (topic) {
 
     try {
 
-        if (
-            Events &&
-            typeof Events.topicCreate === "function"
-        ) {
-
-            await Events.topicCreate(
-                topic
-            );
-
+        if (Events && typeof Events.topicCreate === "function") {
+            await Events.topicCreate(topic);
         }
 
-
-        if (
-            Indexer &&
-            typeof Indexer.indexTopic === "function"
-        ) {
-
-            await Indexer.indexTopic(
-                topic
-            );
-
+        if (Indexer && typeof Indexer.indexTopic === "function") {
+            await Indexer.indexTopic(topic);
         }
 
+    } catch (err) {
 
-    } catch (error) {
-
-        console.error(
-            "[Plugin] topic save error",
-            error.message
-        );
+        console.error("[Plugin] topic save error:", err.message);
 
     }
 
 };
 
+/**
+ * ACP menu item
+ */
+Plugin.addAdminNavigation = async function (header) {
+
+    header.plugins.push({
+        route: "/plugins/integration",
+        icon: "fa-robot",
+        name: "NodeBB Integration"
+    });
+
+    return header;
+
+};
 
 module.exports = Plugin;

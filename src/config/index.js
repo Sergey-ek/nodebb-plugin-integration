@@ -1,322 +1,133 @@
 "use strict";
 
-/*
+/**
+ * NodeBB Integration Layer
+ *
+ * Configuration provider
+ *
+ * Settings are stored in the NodeBB database
+ * using meta.settings.
+ */
 
-NodeBB Integration Layer
+let meta = null;
 
+try {
 
-Global configuration
+    meta = require.main.require("./src/meta");
 
+} catch (err) {
 
-
-*/
-
-require("dotenv").config();
-
-
-
-
-
-
-
-
-
-
-
-
-
-const Config = {
-
-
-
-
-environment:
-
-    process.env.NODE_ENV ||
-
-    "development",
-
-
-
-
-
-nodebb: {
-
-
-    url:
-
-        process.env.NODEBB_URL ||
-
-        "http://localhost:4567",
-
-
-
-    apiKey:
-
-        process.env.NODEBB_API_KEY ||
-
-        ""
-
-
-},
-
-
-
-
-
-
-
-
-redis: {
-
-
-    host:
-
-        process.env.REDIS_HOST ||
-
-        "localhost",
-
-
-
-    port:
-
-        Number(
-
-            process.env.REDIS_PORT ||
-
-            6379
-
-        ),
-
-
-
-    password:
-
-        process.env.REDIS_PASSWORD ||
-
-        ""
-
-
-
-},
-
-
-
-
-
-
-
-
-qdrant: {
-
-
-    url:
-
-        process.env.QDRANT_URL ||
-
-        "http://localhost:6333",
-
-
-
-    collection:
-
-        process.env.QDRANT_COLLECTION ||
-
-        "nodebb_knowledge"
-
-
-
-},
-
-
-
-
-
-
-
-
-openai: {
-
-
-    apiKey:
-
-        process.env.OPENAI_API_KEY ||
-
-        "",
-
-
-
-    model:
-
-        process.env.OPENAI_MODEL ||
-
-        "gpt-4.1-mini",
-
-
-
-    embeddingModel:
-
-        process.env.OPENAI_EMBEDDING_MODEL ||
-
-        "text-embedding-3-small"
-
-
-
-},
-
-
-
-
-
-
-
-
-embeddings: {
-
-
-    provider:
-
-        process.env.AI_PROVIDER ||
-
-        "fake",
-
-
-
-    size:
-
-        Number(
-
-            process.env.EMBEDDING_SIZE ||
-
-            1536
-
-        )
-
-
-
-},
-
-
-
-
-
-
-
-
-mcp: {
-
-
-    enabled:
-
-        process.env.MCP_ENABLED !== "false"
-
-
+    // Standalone mode (tests, npm, CLI)
 
 }
 
+const DEFAULTS = {
 
+    aiProvider: "fake",
 
+    openaiApiKey: "",
 
+    openaiModel: "text-embedding-3-small",
 
+    qdrantUrl: "http://localhost:6333",
 
+    collection: "nodebb_knowledge",
 
+    mcpEnabled: false,
 
-
-
-
-
-
-};
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-
-Safe debug output
-
-
-Does not expose API keys
-*/
-
-Config.info = function() {
-
-
-
-
-return {
-
-
-    environment:
-
-        Config.environment,
-
-
-
-    nodebb:
-
-    {
-
-        url:
-
-            Config.nodebb.url
-
-    },
-
-
-
-    qdrant:
-
-    {
-
-        url:
-
-            Config.qdrant.url,
-
-
-        collection:
-
-            Config.qdrant.collection
-
-    },
-
-
-
-    embeddings:
-
-        Config.embeddings,
-
-
-
-    mcp:
-
-        Config.mcp
-
-
+    mcpPort: 3001
 
 };
 
+async function get() {
+
+    if (!meta) {
+        return { ...DEFAULTS };
+    }
+
+    try {
+
+        return await meta.settings.get(
+            "nodebb-plugin-integration",
+            DEFAULTS
+        );
+
+    } catch (err) {
+
+        console.error(
+            "[Config] unable to load settings:",
+            err.message
+        );
+
+        return { ...DEFAULTS };
+
+    }
+
+}
+
+async function set(values) {
+
+    if (!meta) {
+        return false;
+    }
+
+    try {
+
+        await meta.settings.set(
+            "nodebb-plugin-integration",
+            values
+        );
+
+        return true;
+
+    } catch (err) {
+
+        console.error(
+            "[Config] unable to save settings:",
+            err.message
+        );
+
+        return false;
+
+    }
+
+}
+
+async function info() {
+
+    const cfg = await get();
+
+    return {
+
+        aiProvider: cfg.aiProvider,
+
+        openaiModel: cfg.openaiModel,
+
+        qdrantUrl: cfg.qdrantUrl,
+
+        collection: cfg.collection,
+
+        mcpEnabled: cfg.mcpEnabled,
+
+        mcpPort: cfg.mcpPort,
+
+        openaiApiKey:
+            cfg.openaiApiKey
+                ? "***configured***"
+                : ""
+
+    };
+
+}
+
+module.exports = {
+
+    get,
+
+    set,
+
+    info,
+
+    defaults: DEFAULTS
+
 };
-
-
-
-
-
-
-
-
-
-
-
-
-
-module.exports = Config;

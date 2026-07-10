@@ -1,0 +1,15 @@
+{
+    "title": "Интеграция NodeBB",
+
+    "settings": {
+        "ai-provider": "AI провайдер",
+        "openai-key": "OpenAI API ключ",
+        "openai-model": "Модель эмбеддингов OpenAI",
+        "qdrant-url": "URL Qdrant",
+        "collection": "Коллекция",
+        "mcp-enabled": "Включить MCP сервер",
+        "mcp-port": "Порт MCP",
+        "save": "Сохранить настройки",
+        "saved": "Настройки успешно сохранены"
+    }
+}

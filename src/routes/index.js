@@ -1,110 +1,49 @@
 "use strict";
 
-/*
+/**
+ * NodeBB Integration Layer
+ *
+ * Routes
+ */
 
-NodeBB Integration Layer
+const API = require("./api");
 
+exports.init = function (router, middleware) {
 
-Routes loader
+    if (!router) {
+        return;
+    }
 
+    /*
+     * REST API
+     */
 
-
-*/
-
-
-
-
-const API =
-require("./api");
-
-
-
-
-
-
-
-
-
-
-
-
-
-function init(router) {
-
-
-
-
-if(!router) {
-
-
-    console.log(
-
-        "[Routes] router unavailable"
-
+    router.get(
+        "/api/v3/integration/info",
+        API.apiInfo
     );
 
+    router.post(
+        "/api/v3/integration/search",
+        API.apiSearch
+    );
 
-    return false;
+    /*
+     * ACP page
+     */
 
+    if (
+        middleware &&
+        middleware.admin &&
+        typeof middleware.admin.buildHeader === "function"
+    ) {
 
-}
+        router.get(
+            "/admin/plugins/integration",
+            middleware.admin.buildHeader,
+            API.renderAdmin
+        );
 
-
-
-
-
-
-
-
-API.init(
-
-    router
-
-);
-
-
-
-
-
-
-
-
-console.log(
-
-    "[Routes] initialized"
-
-);
-
-
-
-
-
-
-
-return true;
-
-
-
-
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
-module.exports = {
-
-init
-
-
-
+    }
 
 };
