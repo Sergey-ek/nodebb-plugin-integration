@@ -8,6 +8,17 @@
     "type": "git",
     "url": "https://github.com/Sergey-ek/nodebb-plugin-integration.git"
   },
+  "files": [
+    "library.js",
+    "plugin.json",
+    "src",
+    "public",
+    "templates",
+    "languages",
+    "README.md",
+    "README.ru.md",
+    "LICENSE"
+  ],
   "keywords": [
     "nodebb",
     "nodebb-plugin",
@@ -23,13 +34,6 @@
   "engines": {
     "node": ">=20"
   },
-  "files": [
-    "library.js",
-    "plugin.json",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
   "scripts": {
     "test": "cross-env NODE_ENV=test mocha test/*.test.js",
     "check": "node --check library.js && node --check src/routes/index.js && node --check src/routes/api.js && node --check src/mcp/server.js && node --check src/mcp/tools.js",
