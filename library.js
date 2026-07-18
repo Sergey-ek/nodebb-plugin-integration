@@ -42,19 +42,20 @@ plugin.init = async function (params) {
 plugin.addAdminNavigation = async function (header) {
 
 
+    if (!header) {
+        return header;
+    }
+
+
     if (!header.plugins) {
         header.plugins = [];
     }
 
 
     header.plugins.push({
-
         route: '/plugins/nodebb-integration',
-
         icon: 'fa-robot',
-
         name: 'NodeBB Integration'
-
     });
 
 
