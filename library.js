@@ -1,27 +1,67 @@
 'use strict';
 
 const routeHelpers = require.main.require('./src/routes/helpers');
-const apiRoutes = require('./routes/api');
 
-const Plugin = {};
+const plugin = {};
 
-Plugin.init = async ({ router }) => {
 
-    // ACP page
+/**
+ * Plugin initialization
+ */
+plugin.init = async function (params) {
+
+    const { router } = params;
+
+
     routeHelpers.setupAdminPageRoute(
         router,
         '/admin/plugins/nodebb-integration',
-        (req, res) => {
-            res.render('admin/plugins/nodebb-integration', {});
+        [],
+        async function (req, res) {
+
+            res.render(
+                'admin/plugins/integration',
+                {
+                    title: 'NodeBB Integration'
+                }
+            );
+
         }
     );
 
-    // API
-    apiRoutes(router);
 
-    console.log('[nodebb-plugin-integration] loaded');
+    console.log('[nodebb-plugin-integration] initialized');
 
 };
 
 
-module.exports = Plugin;
+
+/**
+ * Add ACP menu item
+ */
+plugin.addAdminNavigation = async function (header) {
+
+
+    if (!header.plugins) {
+        header.plugins = [];
+    }
+
+
+    header.plugins.push({
+
+        route: '/plugins/nodebb-integration',
+
+        icon: 'fa-robot',
+
+        name: 'NodeBB Integration'
+
+    });
+
+
+    return header;
+
+};
+
+
+
+module.exports = plugin;
