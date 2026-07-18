@@ -1,6 +1,6 @@
 {
   "name": "nodebb-plugin-integration",
-  "version": "0.4.2",
+  "version": "0.4.3",
   "description": "AI integration layer for NodeBB forums with MCP, semantic search, RAG and Qdrant knowledge pipeline",
   "main": "library.js",
   "license": "MIT",
@@ -52,6 +52,6 @@
     "mocha": "^11.7.6"
   },
   "nbbpm": {
-    "compatibility": "^4.4.1"
+    "compatibility": "^4.14.0"
   }
 }
