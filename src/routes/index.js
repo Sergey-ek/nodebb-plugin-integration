@@ -17,44 +17,37 @@ exports.init = function (router, middleware) {
         throw new Error("[Integration] setupAdminPageRoute unavailable");
     }
 
-    // Existing user-facing semantic search.
     router.post(
         "/api/v3/integration/search",
         middleware.ensureLoggedIn,
         API.apiSearch
     );
 
-    router.get(
-        "/api/v3/integration/internal/info",
-        API.internalAuth,
-        API.internalInfo
-    );
+    const internal = "/api/v3/integration/internal";
 
-    router.post(
-        "/api/v3/integration/internal/post",
-        API.internalAuth,
-        API.internalPost
-    );
+    router.get(`${internal}/info`, API.internalAuth, API.internalInfo);
 
-    router.post(
-        "/api/v3/integration/internal/topic",
-        API.internalAuth,
-        API.internalTopic
-    );
+    const routes = {
+        post: API.internalPost,
+        topic: API.internalTopic,
+        user: API.internalUser,
+        search: API.internalSearch,
+        "topic/create": API.internalCreateTopic,
+        "topic/delete": API.internalDeleteTopic,
+        "topic/restore": API.internalRestoreTopic,
+        topics: API.internalListTopics,
+        "post/create": API.internalCreatePost,
+        "post/edit": API.internalEditPost,
+        "post/delete": API.internalDeletePost,
+        "post/restore": API.internalRestorePost,
+        "user/delete-posts": API.internalDeleteUserPosts,
+        posts: API.internalListPosts
+    };
 
-    router.post(
-        "/api/v3/integration/internal/user",
-        API.internalAuth,
-        API.internalUser
-    );
+    for (const [path, handler] of Object.entries(routes)) {
+        router.post(`${internal}/${path}`, API.internalAuth, handler);
+    }
 
-    router.post(
-        "/api/v3/integration/internal/search",
-        API.internalAuth,
-        API.internalSearch
-    );
-
-    // Existing ACP page.
     helpers.setupAdminPageRoute(
         router,
         "/admin/plugins/integration",

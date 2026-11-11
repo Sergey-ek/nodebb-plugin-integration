@@ -1,198 +1,209 @@
-# NodeBB Integration Layer
+# NodeBB Integration
 
-Integration plugin for NodeBB forums providing MCP (Model Context Protocol), AI-powered semantic search, RAG retrieval and Qdrant vector storage.
+AI and MCP integration layer for NodeBB.
+
+The plugin connects NodeBB to AI-powered semantic search and exposes forum functionality to external AI clients through the Model Context Protocol (MCP).
+
+- **Version:** 0.6.0
+- **License:** MIT
+- **NodeBB:** 4.x
+- **Node.js:** >= 22
 
 ## Features
 
-- NodeBB integration
-- MCP server using Streamable HTTP
-- Separate MCP child process managed by NodeBB
-- Bearer token authentication
-- Internal API authentication between MCP and NodeBB
-- OpenAI embeddings
-- Qdrant vector storage and semantic search
-- RAG retrieval with NodeBB access control
-- Individual post indexing, including replies
-- Configurable excluded categories
-- OpenAI and Fake AI provider modes
-- ACP configuration interface
-- Automated tests
-
-## Architecture
-
-NodeBB → Integration Plugin → MCP / AI
-
-MCP: Streamable HTTP → MCP Child Process → Internal NodeBB API → NodeBB Access Control
-
-AI: OpenAI → Embeddings → Qdrant → Vector Search → Knowledge Retrieval
+- MCP server using Streamable HTTP transport.
+- Separate MCP child process managed by the plugin.
+- Bearer-token authentication for MCP clients.
+- Separate authentication token for the internal NodeBB API.
+- Configurable MCP bind address, port and service account.
+- 15 MCP tools for forum information, reading, searching and content management.
+- OpenAI embedding generation and semantic search.
+- Qdrant vector database integration.
+- Permission-aware retrieval: search results are filtered using NodeBB access permissions.
+- Individual post indexing and category exclusions.
+- OpenAI and Fake AI provider modes.
+- NodeBB ACP configuration interface.
+- Automated tests for API handlers and MCP tools.
 
 ## Requirements
 
-- Node.js >= 20
-- npm >= 10
-- NodeBB 4.x
+- Node.js >= 22.
+- npm >= 10.
+- NodeBB 4.x.
+- A running NodeBB instance.
 
-AI functionality requires an OpenAI API key and a Qdrant server. MCP requires a running NodeBB instance.
+Additional services are required for AI semantic search:
+
+- An OpenAI API key.
+- A reachable Qdrant instance and collection configured for the plugin's embedding model.
+
+MCP can be used independently of semantic search. The `search_knowledge` tool requires the OpenAI provider and Qdrant.
 
 ## Installation
 
-Install the plugin using the NodeBB plugin management interface or your usual NodeBB plugin installation procedure.
+Install the plugin using the NodeBB administration interface or the standard NodeBB plugin installation procedure.
 
-Install dependencies in the plugin directory using npm install.
+For a manual installation:
 
-Restart NodeBB and configure the plugin in ACP → Plugins → NodeBB Integration.
+```bash
+cd /path/to/nodebb
+npm install nodebb-plugin-integration
+```
+
+Build and restart NodeBB using the standard procedure for your installation.
+
+After installation, open:
+
+**NodeBB ACP → Plugins → NodeBB Integration**
+
+Configure the required options and save the settings.
 
 ## Configuration
 
-The plugin is configured through the NodeBB ACP interface.
+The plugin configuration is managed through the NodeBB ACP.
 
-### AI Provider
+### AI provider
 
-Two providers are available.
+The plugin supports two provider modes:
 
-**OpenAI**
+- **OpenAI** — enables embeddings and semantic search.
+- **Fake** — disables calls to the OpenAI service. Semantic search is unavailable in this mode.
 
-Enables:
-- OpenAI embedding generation
-- Qdrant vector storage
-- Post indexing
-- Semantic search
-- RAG retrieval
+For semantic search, configure the OpenAI API key, embedding settings and Qdrant connection according to your deployment.
 
-Configure the OpenAI API key, embedding model, embedding dimensions, Qdrant URL and collection name.
+### Search and indexing
 
-**Fake**
+The plugin uses embeddings to index forum content and Qdrant to store and retrieve vectors.
 
-Disables AI functionality completely:
-- OpenAI API is not called.
-- Qdrant is not accessed.
-- Embeddings are not generated.
-- Post indexing is disabled.
-- Semantic search is disabled.
+Search results are not returned solely on the basis of vector similarity. Before returning a result, the plugin checks whether the configured NodeBB service user can read the corresponding post and topic.
 
-NodeBB integration and MCP remain available.
+Excluded Categories allows selected categories to be omitted from semantic search.
 
-OpenAI and Qdrant settings are preserved when switching providers. Selecting OpenAI again re-enables the AI pipeline.
+The plugin validates retrieved post metadata against NodeBB before returning post content. Qdrant is used as the vector index; NodeBB remains the source of post content and access permissions.
 
-Fake mode is useful for developing and testing the NodeBB and MCP integration without external AI services.
+### MCP server
 
-### Excluded Categories
+MCP settings include:
 
-Categories selected in ACP are excluded from AI indexing and semantic search.
+| Setting | Description |
+|---|---|
+| Enable MCP | Enables or disables the MCP server |
+| Bind address | Address on which the MCP HTTP server listens |
+| Port | MCP HTTP port |
+| NodeBB URL | Internal URL used by the MCP process to reach NodeBB |
+| Bearer token | Authentication token for MCP clients |
+| Service user UID | NodeBB account used for permission checks and write operations |
 
-## AI Pipeline
+Default MCP connection settings:
 
-When OpenAI is enabled:
+```text
+Bind address: 127.0.0.1
+Port:         3100
+NodeBB URL:   http://127.0.0.1:4567
+```
 
-Forum Post → Embedding Generation → Qdrant Vector Storage → Semantic Search → NodeBB Access Control → Knowledge Retrieval
+The default bind address restricts the MCP listener to localhost. Change it only when remote access is intentionally required and the network exposure is secured.
 
-Each post is indexed independently, including replies.
+The plugin automatically generates a separate random token for its internal API. This token is distinct from the MCP client Bearer token and is not intended to be shared with clients.
 
-Search results are checked against NodeBB permissions before post content is retrieved. Posts and topics that the service user cannot read are excluded.
+The configured service user is the actor for MCP operations. A client cannot override the acting UID.
 
-Qdrant stores vectors and metadata only. Post text is retrieved from NodeBB after access checks.
+## MCP tools
 
-## Qdrant
+The MCP server provides 15 tools:
 
-Configure the Qdrant URL, collection name and embedding dimensions through ACP.
+| Tool | Description |
+|---|---|
+| `get_forum_info` | Get public forum information |
+| `get_post` | Read a post |
+| `get_topic` | Read topic metadata |
+| `get_user` | Read public user profile fields |
+| `search_knowledge` | Search indexed forum content semantically |
+| `create_topic` | Create a topic |
+| `delete_topic` | Soft-delete a topic |
+| `restore_topic` | Restore a topic |
+| `list_topics` | List accessible topics |
+| `create_post` | Create a reply |
+| `edit_post` | Edit a post |
+| `delete_post` | Soft-delete a post |
+| `restore_post` | Restore a post |
+| `delete_user_posts` | Soft-delete a user's replies in batches |
+| `list_posts` | List posts in a topic |
 
-The plugin checks whether the collection exists and creates it when necessary.
+All write operations use native NodeBB methods and permission checks.
 
-Qdrant is not accessed when Fake is selected.
+Deletion tools perform soft deletion, not permanent data removal. `delete_user_posts` skips the first post of every topic. Restoring a topic does not automatically restore posts that were separately deleted.
 
-## MCP Server
+See the complete reference for argument schemas, defaults, limits, response fields, permissions, pagination and examples:
 
-The MCP server is managed by the NodeBB plugin and runs as a separate child process.
-
-Transport:
-- Streamable HTTP
-- Bearer token authentication
-
-The MCP server communicates with NodeBB through an authenticated internal API using a separate secret managed by the plugin.
-
-Configure in ACP:
-- Enable or disable MCP
-- Bind address
-- Port
-- NodeBB URL
-- Bearer token
-- Service user UID
-
-The service user UID is configured by the administrator. MCP clients cannot override it.
-
-### Available Tools
-
-- get_forum_info — Get public forum information.
-- get_post — Retrieve a post after access checks.
-- get_topic — Retrieve a topic after access checks.
-- get_user — Retrieve public user information.
-- search_knowledge — Search indexed forum knowledge.
-
-search_knowledge requires the OpenAI provider. In Fake mode, it returns an explicit AI-disabled error.
+- [MCP API Reference (English)](docs/MCP.md)
+- [Справочник MCP API (Русский)](docs/MCP.ru.md)
 
 ## Security
 
-- MCP clients authenticate using a Bearer token.
-- Internal API requests use a separate secret.
-- Secret values are never returned to the ACP interface.
-- Empty secret fields preserve existing values.
-- User IDs supplied by MCP clients are not trusted.
-- The configured service user is used for access checks.
-- Post and topic permissions are checked before content is returned.
-- Access-check failures deny access.
-- Qdrant payloads contain identifiers and metadata, not post text.
+- MCP clients must authenticate with a Bearer token.
+- The internal NodeBB API uses a separate automatically generated token.
+- Internal API routes require authentication and are disabled when MCP is disabled.
+- The default MCP bind address is `127.0.0.1`.
+- The configured service user determines the permissions available to MCP operations.
+- Read operations apply NodeBB access checks.
+- Semantic search filters results by the service user's permissions.
+- Public user lookup returns only the selected profile fields.
+- Secret values are not included in the plugin's public configuration information.
 
-Never commit API keys, tokens or other secrets.
+Use a dedicated NodeBB service account with only the permissions required for the intended MCP operations. Do not expose the internal API token.
 
-## Development and Testing
+## Development
 
-Install dependencies: npm install
+Install dependencies:
 
-Syntax checks: npm run check
+```bash
+npm install
+```
 
-Tests: npm test
+Run syntax checks:
 
+```bash
+npm run check
+```
 
-The test suite validates configuration, MCP tool arguments and other plugin components.
+Run the test suite:
 
-## Project Structure
+```bash
+npm test
+```
 
-library.js
-package.json
-plugin.json
-public/
-  js/admin.js
-  templates/admin/plugins/integration.tpl
-src/
-  ai/
-    embeddings.js
-    indexer.js
-    openai.js
-    qdrant.js
-    search.js
-  config/
-    index.js
-    validation.js
-  events/
-    index.js
-  mcp/
-    manager.js
-    server.js
-    tools.js
-  nodebb/
-    categories.js
-    index.js
-    meta.js
-    posts.js
-    privileges.js
-    topics.js
-    users.js
-  routes/
-    api.js
-    index.js
-test/
-  config-validation.test.js
-  mcp-tools.test.js
+The tests cover API authentication, API handlers, argument validation and MCP tool behavior.
+
+## Project structure
+
+```text
+.
+├── library.js
+├── plugin.json
+├── package.json
+├── README.md
+├── README.ru.md
+├── docs/
+│   ├── MCP.md
+│   └── MCP.ru.md
+├── src/
+│   ├── ai/
+│   ├── config/
+│   ├── mcp/
+│   ├── nodebb/
+│   └── routes/
+├── public/
+├── languages/
+└── test/
+```
+
+## Compatibility
+
+Designed for NodeBB 4.x.
+Version 0.6.0 has been tested with NodeBB 4.16.7.
+
+The plugin requires Node.js >= 22. Native NodeBB response fields may vary between NodeBB versions.
 
 ## License
 

@@ -36,9 +36,7 @@ async function getUsers(uids = []) {
         )
     )];
 
-    if (!unique.length) {
-        return [];
-    }
+    if (!unique.length) return [];
 
     const users = NodeBB.get("users");
 
@@ -56,8 +54,25 @@ async function getUsers(uids = []) {
     return result;
 }
 
+async function getPostIds(uid, start, stop) {
+    uid = Number(uid);
+
+    if (!Number.isSafeInteger(uid) || uid <= 0) {
+        throw new TypeError("Invalid user ID");
+    }
+
+    const users = NodeBB.get("users");
+
+    if (typeof users.getPostIds !== "function") {
+        throw new Error("NodeBB users.getPostIds is unavailable");
+    }
+
+    return users.getPostIds(uid, start, stop);
+}
+
 module.exports = {
     getUser,
     getUsers,
+    getPostIds,
     FIELDS
 };
