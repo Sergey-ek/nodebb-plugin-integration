@@ -47,14 +47,17 @@ function createApiClient(config) {
 
     return {
         async request(method, path, body) {
+            const hasBody = body !== undefined &&
+                !["GET", "HEAD"].includes(method.toUpperCase());
+
             const response = await fetch(`${baseUrl}${path}`, {
                 method,
                 headers: {
                     Authorization: `Bearer ${config.internalApiToken}`,
                     Accept: "application/json",
-                    ...(body ? { "Content-Type": "application/json" } : {})
+                    ...(hasBody ? { "Content-Type": "application/json" } : {})
                 },
-                ...(body ? { body: JSON.stringify(body) } : {}),
+                ...(hasBody ? { body: JSON.stringify(body) } : {}),
                 signal: AbortSignal.timeout(15000)
             });
 
@@ -228,7 +231,7 @@ async function start(rawConfig) {
                 requestMcpServer = new Server(
                     {
                         name: "nodebb-integration-mcp",
-                        version: "0.6.0"
+                        version: "0.6.1"
                     },
                     {
                         capabilities: {

@@ -1,6 +1,6 @@
 # MCP API Reference
 
-Version: 0.6.0
+Version: 0.6.1
 
 This document describes all MCP tools exposed by `nodebb-plugin-integration`.
 
@@ -707,7 +707,7 @@ Bulk deletion is different from single-item operations: individual failures are 
 
 The plugin targets NodeBB 4.x and requires Node.js >= 22.
 
-The 0.6.0 implementation was checked against NodeBB 4.16.7.
+The 0.6.1 implementation was checked against NodeBB 4.16.7.
 
 Native NodeBB response fields may vary between NodeBB versions. The plugin uses native NodeBB methods for creation, editing, deletion, restoration and listing.
 

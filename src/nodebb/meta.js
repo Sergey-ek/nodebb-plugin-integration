@@ -4,6 +4,7 @@ const NodeBB = require("./index");
 
 async function getInfo() {
     const meta = NodeBB.get("meta");
+    const nconf = nodebb.require("nconf");
 
     if (!meta.configs || typeof meta.configs.list !== "function") {
         throw new Error("NodeBB meta.configs.list is unavailable");
@@ -13,9 +14,9 @@ async function getInfo() {
 
     return {
         title: config.title || "",
-        url: config.url || "",
+        url: nconf.get("url") || "",
         version: config.version || "",
-        language: config.language || null
+        language: config.defaultLang || null
     };
 }
 

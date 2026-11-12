@@ -124,15 +124,20 @@ exports.internalPost = async function (req, res) {
             return res.status(404).json({ error: "Post not found" });
         }
 
-        const content = await Posts.getPostContent(pid);
+        const [topic, content] = await Promise.all([
+            Topics.getTopic(tid),
+            Posts.getPostContent(pid)
+        ]);
 
-        if (!content) return res.status(404).json({ error: "Post not found" });
+        if (!topic || topic.deleted || !content) {
+            return res.status(404).json({ error: "Post not found" });
+        }
 
         return res.json({
             pid: Number(post.pid),
             tid,
             uid: Number(post.uid),
-            cid: Number(post.cid),
+            cid: Number(topic.cid),
             content: content.content,
             timestamp: post.timestamp
         });
