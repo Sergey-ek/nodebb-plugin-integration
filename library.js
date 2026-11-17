@@ -4,6 +4,7 @@ const Routes = require("./src/routes");
 const Events = require("./src/events");
 const Config = require("./src/config");
 const MCPManager = require("./src/mcp/manager");
+const OAuthStorage = require("./src/oauth/storage/runtime");
 
 const Plugin = {};
 
@@ -30,7 +31,22 @@ function registerSocketHandlers() {
             );
         });
 
-        return Config.info();
+        return Config.adminInfo();
+    };
+
+    SocketPlugins.integration.regenerateBearerToken = async function (socket) {
+        await SocketAdmin.before(socket, "admin.settings.set");
+
+        const result = await Config.regenerateBearerToken();
+
+        MCPManager.refresh().catch((error) => {
+            console.error(
+                "[NodeBB Integration] MCP configuration refresh failed:",
+                error.message
+            );
+        });
+
+        return result;
     };
 }
 
@@ -46,6 +62,8 @@ Plugin.init = async function (params = {}) {
     }
 
     await Events.init();
+
+    OAuthStorage.init();
 
     MCPManager.init();
 

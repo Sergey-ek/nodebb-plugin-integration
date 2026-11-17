@@ -13,6 +13,7 @@ const DEFAULTS = Object.freeze({
     excludedCategories: [],
 
     mcpEnabled: false,
+    authMode: "oauth",
     mcpHost: "127.0.0.1",
     mcpPort: 3100,
     mcpNodebbUrl: "http://127.0.0.1:4567",
@@ -50,10 +51,41 @@ function getMeta() {
 async function get() {
     const meta = getMeta();
     const saved = await meta.settings.get(SETTINGS_KEY);
-    const settings = Validation.normalize(saved || {}, DEFAULTS);
+    const raw = saved && typeof saved === "object" && !Array.isArray(saved)
+        ? { ...saved }
+        : {};
+
+    let shouldSave = false;
+
+    // Preserve legacy authentication only when the old Bearer token is valid.
+    if (!Object.prototype.hasOwnProperty.call(raw, "authMode")) {
+        let hasValidLegacyToken = false;
+
+        try {
+            hasValidLegacyToken = Boolean(
+                Validation.validateBearerToken(raw.mcpBearerToken)
+            );
+        } catch {
+            hasValidLegacyToken = false;
+        }
+
+        raw.authMode = hasValidLegacyToken ? "legacy" : "oauth";
+        shouldSave = true;
+    }
+
+    const settings = Validation.normalize(raw, DEFAULTS);
+
+    if (!settings.mcpBearerToken) {
+        settings.mcpBearerToken = crypto.randomBytes(32).toString("base64url");
+        shouldSave = true;
+    }
 
     if (!settings.internalApiToken) {
         settings.internalApiToken = crypto.randomBytes(48).toString("hex");
+        shouldSave = true;
+    }
+
+    if (shouldSave) {
         await meta.settings.set(SETTINGS_KEY, settings);
     }
 
@@ -76,12 +108,12 @@ async function set(values = {}) {
         "qdrantUrl",
         "collection",
         "excludedCategories",
+        "authMode",
         "mcpEnabled",
         "mcpHost",
         "mcpPort",
         "mcpNodebbUrl",
-        "mcpBearerToken",
-        "mcpServiceUid"
+        "mcpBearerToken"
     ];
 
     for (const key of allowed) {
@@ -97,6 +129,10 @@ async function set(values = {}) {
         ) {
             next[key] = current[key];
         }
+    }
+
+    if (Object.prototype.hasOwnProperty.call(values, "authMode")) {
+        next.authMode = Validation.validateAuthMode(values.authMode);
     }
 
     if (Object.prototype.hasOwnProperty.call(values, "aiProvider")) {
@@ -119,7 +155,12 @@ async function set(values = {}) {
         next.mcpNodebbUrl = Validation.validateNodebbUrl(values.mcpNodebbUrl);
     }
 
-    if (Object.prototype.hasOwnProperty.call(values, "mcpServiceUid")) {
+    // The service UID is only relevant to Legacy Bearer authentication.
+    // ACP submits every form field on every save, so ignore its OAuth value.
+    if (
+        Object.prototype.hasOwnProperty.call(values, "mcpServiceUid") &&
+        next.authMode === "legacy"
+    ) {
         next.mcpServiceUid = Validation.validateServiceUid(values.mcpServiceUid);
     }
 
@@ -129,13 +170,13 @@ async function set(values = {}) {
 
     const normalized = Validation.normalize(next, DEFAULTS);
 
-    if (normalized.mcpEnabled) {
+    if (normalized.mcpEnabled && normalized.authMode === "legacy") {
         if (!normalized.mcpBearerToken) {
-            throw new Error("Set MCP Bearer Token before enabling MCP");
+            throw new Error("Set MCP Bearer Token before enabling legacy authentication");
         }
 
         if (!normalized.mcpServiceUid) {
-            throw new Error("Set MCP service UID before enabling MCP");
+            throw new Error("Set MCP service UID before enabling legacy authentication");
         }
     }
 
@@ -159,6 +200,9 @@ async function info() {
         excludedCategories: settings.excludedCategories,
 
         mcpEnabled: settings.mcpEnabled,
+        authMode: settings.authMode,
+        authModeOauth: settings.authMode === "oauth",
+        authModeLegacy: settings.authMode === "legacy",
         mcpHost: settings.mcpHost,
         mcpPort: settings.mcpPort,
         mcpNodebbUrl: settings.mcpNodebbUrl,
@@ -168,9 +212,27 @@ async function info() {
     };
 }
 
+async function adminInfo() {
+    const settings = await get();
+
+    return {
+        ...await info(),
+        // This method is only used by authenticated ACP handlers.
+        mcpBearerToken: settings.mcpBearerToken
+    };
+}
+
+async function regenerateBearerToken() {
+    const token = crypto.randomBytes(32).toString("base64url");
+    await set({ mcpBearerToken: token });
+    return adminInfo();
+}
+
 module.exports = {
     DEFAULTS,
     get,
     set,
-    info
+    info,
+    adminInfo,
+    regenerateBearerToken
 };

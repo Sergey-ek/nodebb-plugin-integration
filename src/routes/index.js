@@ -1,6 +1,7 @@
 "use strict";
 
 const API = require("./api");
+const OAuthRoutes = require("./oauth");
 
 exports.init = function (router, middleware) {
     if (!router || !middleware) {
@@ -17,6 +18,26 @@ exports.init = function (router, middleware) {
         throw new Error("[Integration] setupAdminPageRoute unavailable");
     }
 
+    router.get(
+        "/.well-known/oauth-authorization-server",
+        OAuthRoutes.authorizationServerMetadata
+    );
+
+    router.get(
+        "/oauth/authorize",
+        OAuthRoutes.authorize
+    );
+
+    router.post(
+        "/oauth/token",
+        OAuthRoutes.token
+    );
+
+    router.post(
+        "/oauth/revoke",
+        OAuthRoutes.revoke
+    );
+
     router.post(
         "/api/v3/integration/search",
         middleware.ensureLoggedIn,
@@ -26,6 +47,11 @@ exports.init = function (router, middleware) {
     const internal = "/api/v3/integration/internal";
 
     router.get(`${internal}/info`, API.internalAuth, API.internalInfo);
+    router.get(
+        `${internal}/auth/validate`,
+        API.internalAuth,
+        API.internalValidate
+    );
 
     const routes = {
         post: API.internalPost,

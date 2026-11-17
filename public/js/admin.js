@@ -7,6 +7,18 @@ define("admin/plugins/integration", ["alerts"], function (Alerts) {
         const container = $(".acp-page-container");
         const form = container.find("form");
         const saveButton = $("#save");
+        const tokenField = form.find('[name="mcpBearerToken"]');
+
+        function showStatus(message, success) {
+            container.find(".integration-save-status").remove();
+
+            $("<div>", {
+                class: "alert " + (
+                    success ? "alert-success" : "alert-danger"
+                ) + " integration-save-status",
+                text: message
+            }).insertBefore(form);
+        }
 
         saveButton.on("click", function () {
             const values = {};
@@ -26,10 +38,8 @@ define("admin/plugins/integration", ["alerts"], function (Alerts) {
                 }
             });
 
-            for (const name of ["openaiApiKey", "mcpBearerToken"]) {
-                if (typeof values[name] !== "string" || !values[name].trim()) {
-                    delete values[name];
-                }
+            if (!values.openaiApiKey || !values.openaiApiKey.trim()) {
+                delete values.openaiApiKey;
             }
 
             saveButton.prop("disabled", true);
@@ -42,15 +52,70 @@ define("admin/plugins/integration", ["alerts"], function (Alerts) {
                     return;
                 }
 
-                form.find('[name="openaiApiKey"], [name="mcpBearerToken"]').val("");
+                if (result && result.mcpBearerToken) {
+                    tokenField.val(result.mcpBearerToken);
+                }
 
-                container.find(".integration-save-status").remove();
-
-                $("<div>", {
-                    class: "alert alert-success integration-save-status",
-                    text: result ? "Settings saved successfully" : "Settings saved"
-                }).insertBefore(form);
+                form.find('[name="openaiApiKey"]').val("");
+                showStatus("Settings saved successfully", true);
             });
+        });
+
+        $("#copyMcpBearerToken").on("click", async function () {
+            const token = tokenField.val();
+
+            if (!token) {
+                Alerts.error("There is no Bearer token to copy");
+                return;
+            }
+
+            try {
+                if (navigator.clipboard && navigator.clipboard.writeText) {
+                    await navigator.clipboard.writeText(token);
+                } else {
+                    tokenField.trigger("focus").trigger("select");
+                    if (!document.execCommand("copy")) {
+                        throw new Error("Clipboard copy failed");
+                    }
+                }
+
+                showStatus("Bearer token copied", true);
+            } catch (error) {
+                Alerts.error("Could not copy the token: " + error.message);
+            }
+        });
+
+        $("#regenerateMcpBearerToken").on("click", function () {
+            if (!window.confirm(
+                "Regenerate the MCP Bearer token? The previous token will stop working immediately."
+            )) {
+                return;
+            }
+
+            const button = $(this);
+            button.prop("disabled", true);
+
+            socket.emit(
+                "plugins.integration.regenerateBearerToken",
+                {},
+                function (error, result) {
+                    button.prop("disabled", false);
+
+                    if (error) {
+                        Alerts.error(
+                            error.message || "Failed to regenerate Bearer token"
+                        );
+                        return;
+                    }
+
+                    if (result && result.mcpBearerToken) {
+                        tokenField.val(result.mcpBearerToken);
+                        showStatus("New Bearer token generated", true);
+                    } else {
+                        Alerts.error("Server did not return the new token");
+                    }
+                }
+            );
         });
     };
 

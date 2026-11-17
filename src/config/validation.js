@@ -148,11 +148,25 @@ function validateBearerToken(value) {
     return token;
 }
 
+function validateAuthMode(value) {
+    if (value !== "oauth" && value !== "legacy") {
+        throw new Error("MCP auth mode must be oauth or legacy");
+    }
+
+    return value;
+}
+
 function normalize(values = {}, defaults) {
     const result = {
         ...defaults,
         ...values
     };
+
+    try {
+        result.authMode = validateAuthMode(result.authMode);
+    } catch {
+        result.authMode = defaults.authMode;
+    }
 
     try {
         result.aiProvider = validateAiProvider(result.aiProvider);
@@ -242,6 +256,7 @@ module.exports = {
     validateQdrantUrl,
     validateNodebbUrl,
     validateAiProvider,
+    validateAuthMode,
     validateMcpHost,
     validatePort,
     validateServiceUid,

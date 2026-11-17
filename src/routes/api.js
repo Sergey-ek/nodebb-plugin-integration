@@ -10,6 +10,12 @@ const Posts = require("../nodebb/posts");
 const Topics = require("../nodebb/topics");
 const Users = require("../nodebb/users");
 const Privileges = require("../nodebb/privileges");
+const OAuthStorage = require("../oauth/storage/runtime");
+const Tokens = require("../oauth/tokens");
+
+const OAUTH_SCOPES = Object.freeze(["mcp"]);
+const ACCESS_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
+const FAMILY_ID_PATTERN = /^[a-f0-9]{32}$/;
 
 function validId(value) {
     const id = Number(value);
@@ -36,7 +42,88 @@ function internalTokenMatches(req, expected) {
 }
 
 function serviceUid(req) {
+    if (req.integrationSettings?.authMode === "oauth") {
+        return validId(req.integrationUserUid);
+    }
+
     return validId(req.integrationSettings?.mcpServiceUid);
+}
+
+function unauthorized(res) {
+    if (typeof res.set === "function") {
+        res.set("WWW-Authenticate", "Bearer");
+        res.set("Cache-Control", "no-store");
+    } else if (typeof res.setHeader === "function") {
+        res.setHeader("WWW-Authenticate", "Bearer");
+        res.setHeader("Cache-Control", "no-store");
+    }
+
+    return res.status(401).json({ error: "Unauthorized" });
+}
+
+async function authenticateOAuthUser(req, res) {
+    const token = req.headers["x-mcp-user-token"];
+
+    if (
+        typeof token !== "string" ||
+        !ACCESS_TOKEN_PATTERN.test(token)
+    ) {
+        return unauthorized(res);
+    }
+
+    let storage;
+
+    try {
+        storage = OAuthStorage.get();
+    } catch (error) {
+        console.error("[Integration] OAuth storage unavailable:", error);
+        return res.status(503).json({
+            error: "OAuth authentication unavailable"
+        });
+    }
+
+    try {
+        const record = await storage.getAccessToken(
+            Tokens.hashToken(token)
+        );
+
+        if (
+            !record ||
+            !Number.isSafeInteger(record.uid) ||
+            record.uid <= 0 ||
+            typeof record.clientId !== "string" ||
+            !record.clientId ||
+            !Array.isArray(record.scopes) ||
+            record.scopes.length !== OAUTH_SCOPES.length ||
+            !OAUTH_SCOPES.every(scope => record.scopes.includes(scope)) ||
+            !FAMILY_ID_PATTERN.test(record.familyId || "")
+        ) {
+            return unauthorized(res);
+        }
+
+        const family = await storage.getRefreshFamily(record.familyId);
+
+        if (
+            !family ||
+            family.revoked === true ||
+            family.uid !== record.uid ||
+            family.clientId !== record.clientId ||
+            !Array.isArray(family.scopes) ||
+            !OAUTH_SCOPES.every(scope => family.scopes.includes(scope)) ||
+            family.scopes.length !== record.scopes.length ||
+            !record.scopes.every(scope => family.scopes.includes(scope))
+        ) {
+            return unauthorized(res);
+        }
+
+        req.integrationUserUid = record.uid;
+        return true;
+    } catch (error) {
+        console.error("[Integration] OAuth token validation failed:", error);
+        return res.status(503).json({
+            error: "OAuth authentication unavailable"
+        });
+    }
 }
 
 function operationError(res, error, label) {
@@ -59,11 +146,26 @@ exports.internalAuth = async function (req, res, next) {
         }
 
         req.integrationSettings = settings;
+
+        if (settings.authMode === "oauth") {
+            const authenticated = await authenticateOAuthUser(req, res);
+
+            if (authenticated !== true) {
+                return authenticated;
+            }
+        }
+
         return next();
     } catch (error) {
         console.error("[Integration] Internal authentication failed:", error);
         return res.status(500).json({ error: "Internal API error" });
     }
+};
+
+// Called by the MCP child before accepting an OAuth-authenticated
+// Streamable HTTP request. internalAuth has already validated the token.
+exports.internalValidate = function (req, res) {
+    return res.json({ authenticated: true });
 };
 
 exports.apiSearch = async function (req, res) {
@@ -495,7 +597,7 @@ exports.internalListPosts = async function (req, res) {
 exports.renderAdmin = async function (req, res) {
     try {
         const [settings, allCategories] = await Promise.all([
-            Config.info(),
+            Config.adminInfo(),
             Categories.getAll()
         ]);
 

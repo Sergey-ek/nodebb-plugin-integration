@@ -10,6 +10,15 @@ function createApi(overrides = {}) {
             return { mcpEnabled: true, internalApiToken: "test-token",
                 mcpServiceUid: 7 };
         } },
+        OAuthStorage: {
+            get() {
+                return {
+                    async getAccessToken() { return null; },
+                    async getRefreshFamily() { return null; }
+                };
+            }
+        },
+        Tokens: { hashToken(token) { return `hash:${token}`; } },
         Search: { async searchText() { return []; } },
         Categories: {},
         Meta: { async getInfo() { return {}; } },
@@ -38,6 +47,8 @@ function createApi(overrides = {}) {
 
     const API = proxyquire("../src/routes/api", {
         "../config": deps.Config,
+        "../oauth/storage/runtime": deps.OAuthStorage,
+        "../oauth/tokens": deps.Tokens,
         "../ai/search": deps.Search,
         "../nodebb/categories": deps.Categories,
         "../nodebb/meta": deps.Meta,
@@ -71,6 +82,33 @@ function request(body = {}) {
         headers: {},
         integrationSettings: { mcpServiceUid: 7 }
     };
+}
+
+async function runOAuthAuthentication({ record, family, storageError = false }) {
+    const { API } = createApi({
+        Config: { async get() {
+            return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+        } },
+        OAuthStorage: {
+            get() {
+                if (storageError) throw new Error("Redis unavailable");
+                return {
+                    async getAccessToken() { return record; },
+                    async getRefreshFamily() { return family; }
+                };
+            }
+        }
+    });
+
+    const req = request();
+    req.headers.authorization = "Bearer test-token";
+    req.headers["x-mcp-user-token"] = "A".repeat(43);
+    const res = response();
+    let called = false;
+
+    await API.internalAuth(req, res, () => { called = true; });
+
+    return { req, res, called };
 }
 
 describe("Internal API authentication", () => {
@@ -118,9 +156,283 @@ describe("Internal API authentication", () => {
 
         assert.equal(res.statusCode, 403);
     });
+
+    it("authenticates an OAuth user and takes UID from the stored access token", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "a".repeat(32);
+        const storage = {
+            async getAccessToken(hash) {
+                assert.equal(hash, "hash:" + "A".repeat(43));
+                return { uid: 42, clientId, scopes: ["mcp"], familyId };
+            },
+            async getRefreshFamily(id) {
+                assert.equal(id, familyId);
+                return { uid: 42, clientId, scopes: ["mcp"], revoked: false };
+            }
+        };
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } },
+            OAuthStorage: { get() { return storage; } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        req.headers["x-mcp-user-token"] = "A".repeat(43);
+        const res = response();
+        let called = false;
+
+        await API.internalAuth(req, res, () => { called = true; });
+
+        assert.equal(called, true);
+        assert.equal(req.integrationUserUid, 42);
+        assert.equal(req.integrationSettings.authMode, "oauth");
+    });
+
+    it("rejects OAuth requests without a user access token", async () => {
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        const res = response();
+
+        await API.internalAuth(req, res, () => assert.fail("next must not be called"));
+
+        assert.equal(res.statusCode, 401);
+    });
+
+    it("rejects an unknown or expired OAuth access token", async () => {
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        req.headers["x-mcp-user-token"] = "B".repeat(43);
+        const res = response();
+
+        await API.internalAuth(req, res, () => assert.fail("next must not be called"));
+
+        assert.equal(res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token whose refresh family has been revoked", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "b".repeat(32);
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } },
+            OAuthStorage: { get() {
+                return {
+                    async getAccessToken() {
+                        return { uid: 42, clientId, scopes: ["mcp"], familyId };
+                    },
+                    async getRefreshFamily() {
+                        return { uid: 42, clientId, scopes: ["mcp"], revoked: true };
+                    }
+                };
+            } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        req.headers["x-mcp-user-token"] = "C".repeat(43);
+        const res = response();
+
+        await API.internalAuth(req, res, () => assert.fail("next must not be called"));
+
+        assert.equal(res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token when its UID differs from the refresh family", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "c".repeat(32);
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } },
+            OAuthStorage: { get() {
+                return {
+                    async getAccessToken() {
+                        return { uid: 42, clientId, scopes: ["mcp"], familyId };
+                    },
+                    async getRefreshFamily() {
+                        return { uid: 99, clientId, scopes: ["mcp"], revoked: false };
+                    }
+                };
+            } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        req.headers["x-mcp-user-token"] = "D".repeat(43);
+        const res = response();
+
+        await API.internalAuth(req, res, () => assert.fail("next must not be called"));
+
+        assert.equal(res.statusCode, 401);
+    });
+
+    it("rejects an OAuth access token without the mcp scope", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "d".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: { uid: 42, clientId, scopes: [], familyId },
+            family: { uid: 42, clientId, scopes: [], revoked: false }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects additional scopes outside the fixed mcp scope", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "e".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: { uid: 42, clientId, scopes: ["mcp", "admin"], familyId },
+            family: { uid: 42, clientId, scopes: ["mcp", "admin"], revoked: false }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects different scopes in the access token and refresh family", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "f".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: { uid: 42, clientId, scopes: ["mcp"], familyId },
+            family: { uid: 42, clientId, scopes: ["mcp", "admin"], revoked: false }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an access token with an empty client ID", async () => {
+        const familyId = "1".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: { uid: 42, clientId: "", scopes: ["mcp"], familyId },
+            family: { uid: 42, clientId: "", scopes: ["mcp"], revoked: false }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an access token with an invalid refresh family ID", async () => {
+        const clientId = "https://client.example/metadata";
+        const result = await runOAuthAuthentication({
+            record: { uid: 42, clientId, scopes: ["mcp"], familyId: "invalid" },
+            family: { uid: 42, clientId, scopes: ["mcp"], revoked: false }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("returns 503 when OAuth storage is unavailable", async () => {
+        const { API } = createApi({
+            Config: { async get() {
+                return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
+            } },
+            OAuthStorage: { get() { throw new Error("Redis unavailable"); } }
+        });
+        const req = request();
+        req.headers.authorization = "Bearer test-token";
+        req.headers["x-mcp-user-token"] = "E".repeat(43);
+        const res = response();
+
+        await API.internalAuth(req, res, () => assert.fail("next must not be called"));
+
+        assert.equal(res.statusCode, 503);
+    });
 });
 
 describe("Internal API operations", () => {
+    it("uses the authenticated OAuth UID instead of a UID supplied in the request body", async () => {
+        let received;
+        const { API } = createApi({
+            Topics: {
+                async createTopic(data) {
+                    received = data;
+                    return { tid: 15 };
+                }
+            }
+        });
+        const req = request({
+            uid: 999,
+            cid: 3,
+            title: "OAuth topic",
+            content: "Topic body"
+        });
+        req.integrationSettings = { authMode: "oauth", mcpServiceUid: 7 };
+        req.integrationUserUid = 42;
+        const res = response();
+
+        await API.internalCreateTopic(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(received.uid, 42);
+        assert.notEqual(received.uid, 999);
+    });
+
+    it("rejects invalid OAuth UIDs before calling NodeBB", async () => {
+        for (const invalidUid of [0, -1, "invalid", Number.MAX_SAFE_INTEGER + 1]) {
+            let called = false;
+            const { API } = createApi({
+                Topics: {
+                    async createTopic() {
+                        called = true;
+                        return { tid: 15 };
+                    }
+                }
+            });
+            const req = request({
+                cid: 3,
+                title: "OAuth topic",
+                content: "Topic body"
+            });
+            req.integrationSettings = { authMode: "oauth", mcpServiceUid: 7 };
+            req.integrationUserUid = invalidUid;
+            const res = response();
+
+            await API.internalCreateTopic(req, res);
+
+            assert.equal(res.statusCode, 400, `UID ${String(invalidUid)} must be rejected`);
+            assert.equal(called, false, `NodeBB must not be called for UID ${String(invalidUid)}`);
+        }
+    });
+
+    it("continues using the configured service UID in legacy mode", async () => {
+        let received;
+        const { API } = createApi({
+            Topics: {
+                async createTopic(data) {
+                    received = data;
+                    return { tid: 15 };
+                }
+            }
+        });
+        const req = request({
+            uid: 999,
+            cid: 3,
+            title: "Legacy topic",
+            content: "Topic body"
+        });
+        req.integrationSettings = { authMode: "legacy", mcpServiceUid: 7 };
+        req.integrationUserUid = 42;
+        const res = response();
+
+        await API.internalCreateTopic(req, res);
+
+        assert.equal(res.statusCode, 200);
+        assert.equal(received.uid, 7);
+    });
+
     it("creates a topic using the configured service user", async () => {
         let received;
         const { API } = createApi({

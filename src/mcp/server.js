@@ -42,7 +42,7 @@ function isAuthorized(authorization, expectedToken) {
     return Boolean(match && tokensMatch(expectedToken, match[1]));
 }
 
-function createApiClient(config) {
+function createApiClient(config, userToken = null) {
     const baseUrl = config.nodebbUrl.replace(/\/+$/, "");
 
     return {
@@ -55,6 +55,9 @@ function createApiClient(config) {
                 headers: {
                     Authorization: `Bearer ${config.internalApiToken}`,
                     Accept: "application/json",
+                    ...(userToken
+                        ? { "X-MCP-User-Token": userToken }
+                        : {}),
                     ...(hasBody ? { "Content-Type": "application/json" } : {})
                 },
                 ...(hasBody ? { body: JSON.stringify(body) } : {}),
@@ -68,16 +71,20 @@ function createApiClient(config) {
             try {
                 result = responseText ? JSON.parse(responseText) : {};
             } catch {
-                throw new Error(
+                const error = new Error(
                     `NodeBB returned an invalid JSON response (${response.status})`
                 );
+                error.status = response.status;
+                throw error;
             }
 
             if (!response.ok) {
                 const message = result.error || result.message ||
                     `NodeBB API request failed (${response.status})`;
 
-                throw new Error(message);
+                const error = new Error(message);
+                error.status = response.status;
+                throw error;
             }
 
             return result;
@@ -120,9 +127,17 @@ function validateConfig(config) {
         throw new Error("NodeBB internal API token is missing");
     }
 
+    const authMode = config.authMode === undefined
+        ? "legacy"
+        : config.authMode;
+
+    if (authMode !== "oauth" && authMode !== "legacy") {
+        throw new Error("MCP authentication mode is invalid");
+    }
+
     if (
-        typeof config.bearerToken !== "string" ||
-        !config.bearerToken
+        authMode === "legacy" &&
+        (typeof config.bearerToken !== "string" || !config.bearerToken)
     ) {
         throw new Error("MCP bearer token is missing");
     }
@@ -140,7 +155,8 @@ function validateConfig(config) {
     return {
         nodebbUrl: config.nodebbUrl.replace(/\/+$/, ""),
         internalApiToken: config.internalApiToken,
-        bearerToken: config.bearerToken,
+        authMode,
+        bearerToken: authMode === "legacy" ? config.bearerToken : "",
         host: config.host.trim(),
         port
     };
@@ -189,7 +205,6 @@ async function start(rawConfig) {
 
     await stop();
 
-    const api = createApiClient(config);
     let nextHttpServer = null;
 
     try {
@@ -214,14 +229,66 @@ async function start(rawConfig) {
             }
 
             const authorization = req.headers.authorization || "";
+            let userToken = null;
 
-            if (!isAuthorized(authorization, config.bearerToken)) {
+            if (config.authMode === "oauth") {
+                const match = typeof authorization === "string"
+                    ? authorization.match(/^Bearer\s+([A-Za-z0-9_-]{43})$/i)
+                    : null;
+
+                if (!match) {
+                    res.writeHead(401, {
+                        "Content-Type": "application/json",
+                        "WWW-Authenticate": "Bearer",
+                        "Cache-Control": "no-store"
+                    });
+                    res.end(JSON.stringify({ error: "Unauthorized" }));
+                    return;
+                }
+
+                userToken = match[1];
+            } else if (!isAuthorized(authorization, config.bearerToken)) {
                 res.writeHead(401, {
                     "Content-Type": "application/json",
                     "WWW-Authenticate": "Bearer"
                 });
                 res.end(JSON.stringify({ error: "Unauthorized" }));
                 return;
+            }
+
+            // A new API client is created for every HTTP request. The
+            // user's OAuth token is never shared between MCP requests.
+            const api = createApiClient(config, userToken);
+
+            if (config.authMode === "oauth") {
+                try {
+                    await api.request(
+                        "GET",
+                        "/api/v3/integration/internal/auth/validate"
+                    );
+                } catch (error) {
+                    const status = error.status === 401
+                        ? 401
+                        : error.status === 403
+                            ? 403
+                            : 503;
+
+                    res.writeHead(status, {
+                        "Content-Type": "application/json",
+                        ...(status === 401
+                            ? { "WWW-Authenticate": "Bearer" }
+                            : {}),
+                        "Cache-Control": "no-store"
+                    });
+                    res.end(JSON.stringify({
+                        error: status === 401
+                            ? "Unauthorized"
+                            : status === 403
+                                ? "MCP is disabled"
+                                : "OAuth authentication unavailable"
+                    }));
+                    return;
+                }
             }
 
             let requestMcpServer = null;

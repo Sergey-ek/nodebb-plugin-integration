@@ -1,6 +1,6 @@
 {
   "name": "nodebb-plugin-integration",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "AI integration layer for NodeBB forums with MCP, semantic search, RAG and Qdrant knowledge pipeline",
   "main": "library.js",
   "license": "MIT",
@@ -42,6 +42,7 @@
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@qdrant/js-client-rest": "^1.12.0",
     "dotenv": "^16.4.7",
+    "ipaddr.js": "^2.5.0",
     "node-fetch": "^3.3.2",
     "openai": "^6.45.0"
   },

@@ -12,6 +12,7 @@ const DEFAULTS = {
     collection: "nodebb_knowledge",
     excludedCategories: [],
     mcpEnabled: false,
+    authMode: "oauth",
     mcpHost: "127.0.0.1",
     mcpPort: 3100,
     mcpNodebbUrl: "http://127.0.0.1:4567",
@@ -240,5 +241,27 @@ describe("Configuration validation", function () {
             assert.strictEqual(result.mcpServiceUid, 42);
             assert.strictEqual(result.mcpBearerToken, "a".repeat(32));
         });
+    });
+});
+
+
+describe("MCP authentication mode validation", function () {
+    it("accepts OAuth and legacy modes", function () {
+        assert.strictEqual(Validation.validateAuthMode("oauth"), "oauth");
+        assert.strictEqual(Validation.validateAuthMode("legacy"), "legacy");
+    });
+
+    it("rejects unknown authentication modes", function () {
+        assert.throws(() => Validation.validateAuthMode("bearer"));
+        assert.throws(() => Validation.validateAuthMode(""));
+        assert.throws(() => Validation.validateAuthMode(null));
+    });
+
+    it("defaults invalid modes to the configured default", function () {
+        const result = Validation.normalize({
+            authMode: "invalid"
+        }, DEFAULTS);
+
+        assert.strictEqual(result.authMode, "oauth");
     });
 });

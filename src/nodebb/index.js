@@ -7,7 +7,8 @@ const MODULES = Object.freeze({
     users: "./src/user",
     categories: "./src/categories",
     privileges: "./src/privileges",
-    plugins: "./src/plugins"
+    plugins: "./src/plugins",
+    database: "./src/database"
 });
 
 let modules = null;

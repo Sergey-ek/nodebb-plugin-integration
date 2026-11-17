@@ -253,7 +253,10 @@ function startChild(config, signature) {
             config: {
                 nodebbUrl: config.mcpNodebbUrl,
                 internalApiToken: config.internalApiToken,
-                bearerToken: config.mcpBearerToken,
+                authMode: config.authMode || "legacy",
+                bearerToken: (config.authMode || "legacy") === "legacy"
+                    ? config.mcpBearerToken
+                    : "",
                 host: config.mcpHost,
                 port: config.mcpPort
             }
@@ -281,7 +284,12 @@ async function syncConfiguration() {
         return;
     }
 
-    if (!config.mcpBearerToken || !config.internalApiToken) {
+    const authMode = config.authMode || "legacy";
+
+    if (
+        (authMode === "legacy" && !config.mcpBearerToken) ||
+        !config.internalApiToken
+    ) {
         console.error(
             "[NodeBB Integration] MCP is enabled but required secrets are missing"
         );
@@ -293,7 +301,8 @@ async function syncConfiguration() {
     const signature = JSON.stringify({
         nodebbUrl: config.mcpNodebbUrl,
         internalApiToken: config.internalApiToken,
-        bearerToken: config.mcpBearerToken,
+        authMode,
+        bearerToken: authMode === "legacy" ? config.mcpBearerToken : "",
         host: config.mcpHost,
         port: config.mcpPort
     });

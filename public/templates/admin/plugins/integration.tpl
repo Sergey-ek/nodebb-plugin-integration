@@ -172,23 +172,59 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">MCP Bearer Token</label>
-            <input
-                class="form-control"
-                type="password"
-                name="mcpBearerToken"
-                autocomplete="new-password"
-                placeholder="Leave empty to keep the current token"
-            />
-            <!-- IF settings.mcpBearerTokenConfigured -->
-            <div class="form-text text-success">Bearer token is configured</div>
-            <!-- ELSE -->
-            <div class="form-text">Bearer token is not configured</div>
-            <!-- ENDIF settings.mcpBearerTokenConfigured -->
+            <label class="form-label">Authentication mode</label>
+            <select class="form-select" name="authMode">
+                <option value="oauth" <!-- IF settings.authModeOauth -->selected<!-- ENDIF settings.authModeOauth -->>
+                    OAuth 2.0
+                </option>
+                <option value="legacy" <!-- IF settings.authModeLegacy -->selected<!-- ENDIF settings.authModeLegacy -->>
+                    Legacy Bearer Token
+                </option>
+            </select>
+            <div class="form-text">
+                OAuth is the default mode. Legacy Bearer is retained for
+                existing installations and compatibility. In OAuth mode,
+                static Bearer authentication is disabled.
+            </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">NodeBB Service UID</label>
+            <label class="form-label">MCP Bearer Token</label>
+            <div class="input-group">
+                <input
+                    class="form-control"
+                    type="text"
+                    name="mcpBearerToken"
+                    value="{settings.mcpBearerToken}"
+                    autocomplete="off"
+                    readonly
+                    spellcheck="false"
+                />
+                <button
+                    class="btn btn-outline-secondary"
+                    type="button"
+                    id="copyMcpBearerToken"
+                >
+                    <i class="fa fa-copy"></i>
+                    Copy
+                </button>
+                <button
+                    class="btn btn-outline-warning"
+                    type="button"
+                    id="regenerateMcpBearerToken"
+                >
+                    <i class="fa fa-refresh"></i>
+                    Regenerate
+                </button>
+            </div>
+            <div class="form-text">
+                The token is only accepted in Legacy Bearer mode.
+                Regenerating it immediately invalidates the previous token.
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label class="form-label">NodeBB Service UID (Legacy Bearer only)</label>
             <input
                 class="form-control"
                 type="number"
@@ -197,7 +233,7 @@
                 min="1"
             />
             <div class="form-text">
-                NodeBB user ID used by MCP for search and access-control checks.
+                NodeBB service user ID used only in Legacy Bearer mode. OAuth uses the authenticated user's UID.
             </div>
         </div>
 
