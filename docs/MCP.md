@@ -1,6 +1,6 @@
 # MCP API Reference
 
-Version: 0.6.1
+Version: 0.6.2
 
 This document describes all MCP tools exposed by `nodebb-plugin-integration`.
 

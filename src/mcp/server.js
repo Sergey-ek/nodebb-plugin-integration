@@ -298,7 +298,7 @@ async function start(rawConfig) {
                 requestMcpServer = new Server(
                     {
                         name: "nodebb-integration-mcp",
-                        version: "0.6.1"
+                        version: "0.6.2"
                     },
                     {
                         capabilities: {

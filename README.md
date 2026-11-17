@@ -4,7 +4,7 @@ AI and MCP integration layer for NodeBB.
 
 The plugin connects NodeBB to AI-powered semantic search and exposes forum functionality to external AI clients through the Model Context Protocol (MCP).
 
-- **Version:** 0.6.1
+- **Version:** 0.6.2
 - **License:** MIT
 - **NodeBB:** 4.x
 - **Node.js:** >= 22

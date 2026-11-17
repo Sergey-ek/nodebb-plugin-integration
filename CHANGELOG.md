@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.6.2] - 2026-11-17
+
+### Added
+- Added an OAuth 2.0 authorization server with Authorization Code flow and PKCE.
+- Added Client ID Metadata Documents (CIMD) support for OAuth clients.
+- Added an explicit user consent flow and automatic client registration after approval.
+- Added MCP access management to the user profile, including global access control and per-client revocation.
+- Added refresh token rotation and replay detection.
+
+### Security
+- Added permission and grant validation for OAuth-authenticated MCP requests.
+- Added immediate invalidation of existing access when global MCP access is disabled.
+
+
 ## [0.6.1] - 2026-11-12
 
 ### Fixed
