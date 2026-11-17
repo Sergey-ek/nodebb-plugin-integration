@@ -3,7 +3,7 @@
         <div class="col-lg-8 col-lg-offset-2">
             <div class="panel panel-default">
                 <div class="panel-heading">
-                    <h2 class="panel-title">MCP access authorization</h2>
+                    <h2 class="panel-title">{{tx("integration:consent-title")}}</h2>
                 </div>
                 <div class="panel-body">
                     <!-- IF errorMessage -->
@@ -11,22 +11,19 @@
                         {errorMessage}
                     </div>
                     <!-- ELSE -->
-                    <h3>Allow access?</h3>
+                    <h3>{{tx("integration:consent-allow-question")}}</h3>
 
                     <p>
-                        <strong>{clientName}</strong> is requesting permission
-                        to access your forum through the Model Context Protocol (MCP).
+                        <strong>{clientName}</strong> {{tx("integration:consent-request-description")}}
                     </p>
 
                     <p>
-                        Requested permissions:
+                        {{tx("integration:consent-requested-permissions")}}
                         <strong>{scopeLabels}</strong>
                     </p>
 
                     <p>
-                        If you approve, this client will be authorized to act
-                        with your forum account permissions. You can revoke
-                        this authorization later in your account settings.
+                        {{tx("integration:consent-approval-explanation")}}
                     </p>
 
                     <form method="post" action="{config.relative_path}/oauth/consent">
@@ -40,7 +37,7 @@
                                 name="decision"
                                 value="approve"
                             >
-                                Allow access
+                                {{tx("integration:consent-allow")}}
                             </button>
 
                             <button
@@ -49,7 +46,7 @@
                                 name="decision"
                                 value="deny"
                             >
-                                Deny
+                                {{tx("integration:consent-deny")}}
                             </button>
                         </div>
                     </form>

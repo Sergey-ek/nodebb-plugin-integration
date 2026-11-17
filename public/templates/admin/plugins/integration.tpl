@@ -2,51 +2,50 @@
 
     <h1>
         <i class="fa fa-robot"></i>
-        {{title}}
+        {{tx("integration:menu-admin-title")}}
     </h1>
 
     <hr />
 
     <form role="form">
 
-        <h3>AI Provider</h3>
+        <h3>{{tx("integration:admin-ai-provider")}}</h3>
 
         <div class="mb-3">
-            <label class="form-label">Provider</label>
+            <label class="form-label">{{tx("integration:admin-provider")}}</label>
             <select class="form-select" name="aiProvider">
                 <option value="openai" <!-- IF settings.aiProviderOpenai -->selected<!-- ENDIF settings.aiProviderOpenai -->>
-                    OpenAI
+                    {{tx("integration:admin-openai")}}
                 </option>
                 <option value="fake" <!-- IF settings.aiProviderFake -->selected<!-- ENDIF settings.aiProviderFake -->>
-                    Fake (AI disabled)
+                    {{tx("integration:admin-fake-provider")}}
                 </option>
             </select>
             <div class="form-text">
-                Fake disables AI embeddings, indexing, semantic search and Qdrant access.
-                NodeBB and MCP tools remain available.
+                {{tx("integration:admin-fake-help")}}
             </div>
         </div>
 
-        <h3>OpenAI</h3>
+        <h3>{{tx("integration:admin-openai")}}</h3>
 
         <div class="mb-3">
-            <label class="form-label">OpenAI API Key</label>
+            <label class="form-label">{{tx("integration:admin-openai-key")}}</label>
             <input
                 type="password"
                 class="form-control"
                 name="openaiApiKey"
                 autocomplete="new-password"
-                placeholder="Leave empty to keep the current key"
+                placeholder="{{tx("integration:admin-keep-key")}}"
             />
             <!-- IF settings.openaiConfigured -->
-            <div class="form-text text-success">API key is configured</div>
+            <div class="form-text text-success">{{tx("integration:admin-key-configured")}}</div>
             <!-- ELSE -->
-            <div class="form-text">API key is not configured</div>
+            <div class="form-text">{{tx("integration:admin-key-not-configured")}}</div>
             <!-- ENDIF settings.openaiConfigured -->
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Embedding Model</label>
+            <label class="form-label">{{tx("integration:admin-embedding-model")}}</label>
             <input
                 class="form-control"
                 name="openaiModel"
@@ -55,7 +54,7 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Embedding Dimensions</label>
+            <label class="form-label">{{tx("integration:admin-embedding-dimensions")}}</label>
             <input
                 class="form-control"
                 type="number"
@@ -64,17 +63,16 @@
                 min="1"
             />
             <div class="form-text">
-                The default dimension for text-embedding-3-small is 1536.
-                Changing this value requires a matching Qdrant collection.
+                {{tx("integration:admin-embedding-help")}}
             </div>
         </div>
 
         <hr />
 
-        <h3>Qdrant</h3>
+        <h3>{{tx("integration:admin-qdrant")}}</h3>
 
         <div class="mb-3">
-            <label class="form-label">Qdrant URL</label>
+            <label class="form-label">{{tx("integration:admin-qdrant-url")}}</label>
             <input
                 class="form-control"
                 name="qdrantUrl"
@@ -83,7 +81,7 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Qdrant Collection</label>
+            <label class="form-label">{{tx("integration:admin-qdrant-collection")}}</label>
             <input
                 class="form-control"
                 name="collection"
@@ -93,10 +91,10 @@
 
         <hr />
 
-        <h3>Indexing</h3>
+        <h3>{{tx("integration:admin-indexing")}}</h3>
 
         <div class="mb-3">
-            <label class="form-label">Excluded Categories</label>
+            <label class="form-label">{{tx("integration:admin-excluded-categories")}}</label>
             <select
                 class="form-select"
                 name="excludedCategories"
@@ -110,13 +108,13 @@
                 <!-- END categories -->
             </select>
             <div class="form-text">
-                Posts in selected categories are excluded from indexing and search.
+                {{tx("integration:admin-excluded-help")}}
             </div>
         </div>
 
         <hr />
 
-        <h3>MCP Server</h3>
+        <h3>{{tx("integration:admin-mcp-server")}}</h3>
 
         <div class="form-check mb-3">
             <input
@@ -127,12 +125,12 @@
                 <!-- IF settings.mcpEnabled -->checked<!-- ENDIF settings.mcpEnabled -->
             />
             <label class="form-check-label" for="mcpEnabled">
-                Enable MCP Server
+                {{tx("integration:admin-enable-mcp")}}
             </label>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Bind Address</label>
+            <label class="form-label">{{tx("integration:admin-bind-address")}}</label>
             <input
                 class="form-control"
                 name="mcpHost"
@@ -140,13 +138,12 @@
                 placeholder="127.0.0.1"
             />
             <div class="form-text">
-                127.0.0.1 allows local connections only.
-                0.0.0.0 listens on all network interfaces.
+                {{tx("integration:admin-bind-help")}}
             </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">HTTP Port</label>
+            <label class="form-label">{{tx("integration:admin-http-port")}}</label>
             <input
                 class="form-control"
                 type="number"
@@ -158,7 +155,7 @@
         </div>
 
         <div class="mb-3">
-            <label class="form-label">NodeBB API URL</label>
+            <label class="form-label">{{tx("integration:admin-nodebb-api-url")}}</label>
             <input
                 class="form-control"
                 name="mcpNodebbUrl"
@@ -166,30 +163,27 @@
                 placeholder="http://127.0.0.1:4567"
             />
             <div class="form-text">
-                Base URL used by the MCP process to access the internal NodeBB API.
-                Use an address reachable from the MCP process environment.
+                {{tx("integration:admin-nodebb-api-help")}}
             </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">Authentication mode</label>
+            <label class="form-label">{{tx("integration:admin-auth-mode")}}</label>
             <select class="form-select" name="authMode">
                 <option value="oauth" <!-- IF settings.authModeOauth -->selected<!-- ENDIF settings.authModeOauth -->>
-                    OAuth 2.0
+                    {{tx("integration:admin-oauth")}}
                 </option>
                 <option value="legacy" <!-- IF settings.authModeLegacy -->selected<!-- ENDIF settings.authModeLegacy -->>
-                    Legacy Bearer Token
+                    {{tx("integration:admin-legacy-bearer")}}
                 </option>
             </select>
             <div class="form-text">
-                OAuth is the default mode. Legacy Bearer is retained for
-                existing installations and compatibility. In OAuth mode,
-                static Bearer authentication is disabled.
+                {{tx("integration:admin-auth-help")}}
             </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">MCP Bearer Token</label>
+            <label class="form-label">{{tx("integration:admin-bearer-token")}}</label>
             <div class="input-group">
                 <input
                     class="form-control"
@@ -206,7 +200,7 @@
                     id="copyMcpBearerToken"
                 >
                     <i class="fa fa-copy"></i>
-                    Copy
+                    {{tx("integration:admin-copy")}}
                 </button>
                 <button
                     class="btn btn-outline-warning"
@@ -214,17 +208,16 @@
                     id="regenerateMcpBearerToken"
                 >
                     <i class="fa fa-refresh"></i>
-                    Regenerate
+                    {{tx("integration:admin-regenerate")}}
                 </button>
             </div>
             <div class="form-text">
-                The token is only accepted in Legacy Bearer mode.
-                Regenerating it immediately invalidates the previous token.
+                {{tx("integration:admin-token-help")}}
             </div>
         </div>
 
         <div class="mb-3">
-            <label class="form-label">NodeBB Service UID (Legacy Bearer only)</label>
+            <label class="form-label">{{tx("integration:admin-service-uid")}}</label>
             <input
                 class="form-control"
                 type="number"
@@ -233,7 +226,7 @@
                 min="1"
             />
             <div class="form-text">
-                NodeBB service user ID used only in Legacy Bearer mode. OAuth uses the authenticated user's UID.
+                {{tx("integration:admin-service-uid-help")}}
             </div>
         </div>
 
@@ -241,7 +234,7 @@
 
         <button id="save" class="btn btn-primary" type="button">
             <i class="fa fa-save"></i>
-            Save Settings
+            {{tx("integration:admin-save")}}
         </button>
 
     </form>

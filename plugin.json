@@ -50,5 +50,6 @@
       "method": "addProfileItem"
     }
   ],
-  "templates": "./public/templates"
+  "templates": "./public/templates",
+  "languages": "languages"
 }

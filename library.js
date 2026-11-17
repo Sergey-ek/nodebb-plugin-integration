@@ -105,7 +105,7 @@ Plugin.addProfileItem = async function (data) {
         id: "integration",
         route: "integration",
         icon: "fa-plug",
-        name: "Connected applications",
+        name: "[[integration:menu-connected-apps]]",
         visibility: {
             self: true,
             other: false,
@@ -123,7 +123,7 @@ Plugin.addAdminNavigation = async function (header) {
     header.plugins.push({
         route: "/plugins/integration",
         icon: "fa-robot",
-        name: "NodeBB Integration"
+        name: "[[integration:menu-admin-title]]"
     });
 
     return header;

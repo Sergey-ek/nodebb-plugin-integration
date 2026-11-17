@@ -1,6 +1,7 @@
 "use strict";
 
 const OAuthStorage = require("../oauth/storage/runtime");
+const I18n = require("../i18n");
 
 function getUid(req) {
     const uid = Number(req.uid);
@@ -12,7 +13,9 @@ async function ownsProfile(req, res) {
     const userslug = req.params && req.params.userslug;
 
     if (!uid || !userslug) {
-        res.status(403).render("403", { title: "Forbidden" });
+        res.status(403).render("403", {
+            title: await I18n.translate(req, res, "error-forbidden")
+        });
         return false;
     }
 
@@ -20,7 +23,9 @@ async function ownsProfile(req, res) {
     const currentSlug = await User.getUserField(uid, "userslug");
 
     if (!currentSlug || currentSlug !== userslug) {
-        res.status(403).render("403", { title: "Forbidden" });
+        res.status(403).render("403", {
+            title: await I18n.translate(req, res, "error-forbidden")
+        });
         return false;
     }
 
@@ -42,7 +47,7 @@ exports.render = async function (req, res) {
         ]);
 
         return res.render("account/integration", {
-            title: "Connected applications",
+            title: await I18n.translate(req, res, "account-title"),
             userslug: req.params.userslug,
             userAccessEnabled: userAccess.enabled === true,
             grants: grants.map(grant => ({
@@ -54,7 +59,7 @@ exports.render = async function (req, res) {
     } catch (error) {
         console.error("[Integration] OAuth client list failed:", error);
         return res.status(500).render("500", {
-            title: "Integration error"
+            title: await I18n.translate(req, res, "error-integration")
         });
     }
 };
@@ -81,7 +86,7 @@ exports.setAccess = async function (req, res) {
     } catch (error) {
         console.error("[Integration] OAuth user access update failed:", error);
         return res.status(500).render("500", {
-            title: "Integration error"
+            title: await I18n.translate(req, res, "error-integration")
         });
     }
 };
@@ -105,7 +110,7 @@ exports.revoke = async function (req, res) {
     } catch (error) {
         console.error("[Integration] OAuth client revocation failed:", error);
         return res.status(500).render("500", {
-            title: "Integration error"
+            title: await I18n.translate(req, res, "error-integration")
         });
     }
 };

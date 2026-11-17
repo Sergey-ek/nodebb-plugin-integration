@@ -13,9 +13,12 @@ The plugin connects NodeBB to AI-powered semantic search and exposes forum funct
 
 - MCP server using Streamable HTTP transport.
 - Separate MCP child process managed by the plugin.
-- Bearer-token authentication for MCP clients.
+- OAuth 2.0 authentication for MCP clients using Authorization Code + PKCE (`S256`).
+- CIMD (Client ID Metadata Documents) support for public OAuth clients.
+- Explicit per-user consent and MCP access management.
+- Legacy static Bearer-token authentication for backward compatibility.
 - Separate authentication token for the internal NodeBB API.
-- Configurable MCP bind address, port and service account.
+- Configurable MCP bind address, port and authentication mode.
 - 15 MCP tools for forum information, reading, searching and content management.
 - OpenAI embedding generation and semantic search.
 - Qdrant vector database integration.
@@ -37,7 +40,7 @@ Additional services are required for AI semantic search:
 - An OpenAI API key.
 - A reachable Qdrant instance and collection configured for the plugin's embedding model.
 
-MCP can be used independently of semantic search. The `search_knowledge` tool requires the OpenAI provider and Qdrant.
+MCP tools that do not depend on semantic search can be used independently of the OpenAI and Qdrant configuration. The `search_knowledge` tool requires the OpenAI provider and Qdrant.
 
 ## Installation
 
@@ -71,28 +74,43 @@ The plugin supports two provider modes:
 
 For semantic search, configure the OpenAI API key, embedding settings and Qdrant connection according to your deployment.
 
+Default embedding configuration:
+
+| Setting | Default |
+|---|---|
+| Embedding model | `text-embedding-3-small` |
+| Embedding dimensions | `1536` |
+| Qdrant collection | `nodebb_knowledge` |
+
 ### Search and indexing
 
 The plugin uses embeddings to index forum content and Qdrant to store and retrieve vectors.
 
-Search results are not returned solely on the basis of vector similarity. Before returning a result, the plugin checks whether the configured NodeBB service user can read the corresponding post and topic.
+Search results are not returned solely on the basis of vector similarity. Before returning a result, the plugin checks whether the authenticated OAuth user or the configured legacy service user can read the corresponding post and topic.
 
 Excluded Categories allows selected categories to be omitted from semantic search.
 
 The plugin validates retrieved post metadata against NodeBB before returning post content. Qdrant is used as the vector index; NodeBB remains the source of post content and access permissions.
 
-### MCP server
+## MCP server
 
-MCP settings include:
+MCP settings are managed through:
+
+**NodeBB ACP → Plugins → NodeBB Integration**
 
 | Setting | Description |
 |---|---|
 | Enable MCP | Enables or disables the MCP server |
+| Authentication mode | OAuth 2.0 or Legacy Bearer Token |
 | Bind address | Address on which the MCP HTTP server listens |
 | Port | MCP HTTP port |
 | NodeBB URL | Internal URL used by the MCP process to reach NodeBB |
-| Bearer token | Authentication token for MCP clients |
-| Service user UID | NodeBB account used for permission checks and write operations |
+| Bearer token | Shared authentication token; used only in Legacy Bearer mode |
+| Service user UID | NodeBB account used for MCP operations; used only in Legacy Bearer mode |
+
+OAuth 2.0 is the default authentication mode. Each MCP client authorizes a specific NodeBB user. MCP operations then run with that user's identity and permissions.
+
+Legacy Bearer Token mode is retained for backward compatibility. In this mode, all clients share the configured Bearer token and MCP operations run as the configured service user.
 
 Default MCP connection settings:
 
@@ -104,9 +122,58 @@ NodeBB URL:   http://127.0.0.1:4567
 
 The default bind address restricts the MCP listener to localhost. Change it only when remote access is intentionally required and the network exposure is secured.
 
-The plugin automatically generates a separate random token for its internal API. This token is distinct from the MCP client Bearer token and is not intended to be shared with clients.
+When exposing MCP through a reverse proxy, publish the external `/mcp` endpoint over HTTPS.
 
-The configured service user is the actor for MCP operations. A client cannot override the acting UID.
+The plugin automatically generates a separate random token for its internal API. This token is used only between the MCP process and the NodeBB plugin. It is distinct from the client access token and must never be shared with MCP clients.
+
+In OAuth mode, users manage their MCP access and revoke individual client grants from their NodeBB account page:
+
+`/user/<userslug>/integration`
+
+## MCP authentication
+
+### OAuth 2.0
+
+OAuth 2.0 is the default authentication mode.
+
+The plugin implements the OAuth 2.0 Authorization Code flow with PKCE (`S256`). MCP clients are public clients and do not use a client secret.
+
+The authorization server exposes its metadata at:
+
+`https://forum.example.com/.well-known/oauth-authorization-server`
+
+The plugin supports Client ID Metadata Documents (CIMD). A client identifies itself using an HTTPS URL that points to its metadata document.
+
+When a user connects a new client:
+
+1. The plugin retrieves and validates the client's metadata.
+2. The user authenticates with NodeBB.
+3. NodeBB displays a consent screen.
+4. After the user approves access, the client is automatically authorized for that user.
+
+A previously approved client does not require consent again while its authorization grant and client metadata remain valid. If the grant is revoked or the client's metadata changes, the user must approve authorization again.
+
+Each OAuth client acts as the NodeBB user who authorized it. The user's NodeBB permissions apply to MCP operations.
+
+OAuth token lifetimes:
+
+| Token | Lifetime |
+|---|---|
+| Authorization code | 5 minutes |
+| Access token | 15 minutes |
+| Refresh token | 30 days |
+
+Refresh tokens are rotated when used.
+
+Users can manage MCP access from their NodeBB account page. They can disable MCP access globally or revoke individual client grants. Disabling global access invalidates existing tokens. Enabling access again requires clients to authorize again.
+
+### Legacy Bearer Token
+
+Legacy Bearer Token mode is provided for backward compatibility.
+
+In this mode, all MCP clients use the same configured static Bearer token. MCP operations run as the NodeBB account specified by the Service user UID setting.
+
+Use this mode only when compatibility with an existing Bearer-token integration is required.
 
 ## MCP tools
 
@@ -141,17 +208,20 @@ See the complete reference for argument schemas, defaults, limits, response fiel
 
 ## Security
 
-- MCP clients must authenticate with a Bearer token.
-- The internal NodeBB API uses a separate automatically generated token.
+- OAuth 2.0 is the default MCP authentication mode. It uses Authorization Code + PKCE (`S256`) and explicit user consent.
+- OAuth access tokens expire after 15 minutes. Refresh tokens have a 30-day lifetime and are rotated when used.
+- OAuth client metadata is retrieved from HTTPS CIMD URLs. The plugin validates public DNS addresses and TLS certificates when fetching metadata.
+- Users can disable their MCP access globally or revoke individual client grants.
+- Legacy Bearer mode uses a shared static token and a configured service account. Use it only when backward compatibility is required.
+- The internal NodeBB API uses a separate automatically generated token. Never expose this token to MCP clients.
 - Internal API routes require authentication and are disabled when MCP is disabled.
 - The default MCP bind address is `127.0.0.1`.
-- The configured service user determines the permissions available to MCP operations.
-- Read operations apply NodeBB access checks.
-- Semantic search filters results by the service user's permissions.
+- Read and write operations use NodeBB permissions for the authenticated OAuth user or the configured legacy service user.
+- Semantic search filters results by the acting user's permissions.
 - Public user lookup returns only the selected profile fields.
 - Secret values are not included in the plugin's public configuration information.
 
-Use a dedicated NodeBB service account with only the permissions required for the intended MCP operations. Do not expose the internal API token.
+Use HTTPS for externally accessible MCP and OAuth endpoints. Do not expose the internal API token. In Legacy Bearer mode, protect the shared token as a credential with access to the configured service account.
 
 ## Development
 
@@ -192,6 +262,7 @@ The tests cover API authentication, API handlers, argument validation and MCP to
 │   ├── config/
 │   ├── mcp/
 │   ├── nodebb/
+│   ├── oauth/
 │   └── routes/
 ├── public/
 ├── languages/
@@ -201,7 +272,8 @@ The tests cover API authentication, API handlers, argument validation and MCP to
 ## Compatibility
 
 Designed for NodeBB 4.x.
-Version 0.6.1 has been tested with NodeBB 4.16.7.
+
+Version 0.6.2 has been tested with NodeBB 4.16.8.
 
 The plugin requires Node.js >= 22. Native NodeBB response fields may vary between NodeBB versions.
 

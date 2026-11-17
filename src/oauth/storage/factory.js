@@ -4,6 +4,8 @@ const NodeBB = require("../../nodebb");
 const { createStorage } = require("./index");
 const { createRedisAdapter } = require("./redis");
 const { createRedisGrantAdapter } = require("./grants");
+const { createMongoAdapter } = require("./mongo");
+const { createPostgresAdapter } = require("./postgres");
 
 function createStorageFromDatabase(database) {
     if (!database || typeof database !== "object") {
@@ -25,16 +27,14 @@ function createStorageFromDatabase(database) {
         });
     }
 
+    // NodeBB MongoDB adapter exposes the native Db object.
     if (typeof database.client.collection === "function") {
-        throw new Error(
-            "OAuth MongoDB storage is not implemented yet. See src/oauth/storage/TODO.md"
-        );
+        return createStorage(createMongoAdapter(database.client));
     }
 
+    // NodeBB PostgreSQL adapter exposes its initialized pg.Pool.
     if (database.pool) {
-        throw new Error(
-            "OAuth PostgreSQL storage is not implemented yet. See src/oauth/storage/TODO.md"
-        );
+        return createStorage(createPostgresAdapter(database.pool));
     }
 
     throw new Error("Unsupported NodeBB database adapter for OAuth storage");

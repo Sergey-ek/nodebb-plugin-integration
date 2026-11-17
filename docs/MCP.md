@@ -2,101 +2,284 @@
 
 Version: 0.6.2
 
-This document describes all MCP tools exposed by `nodebb-plugin-integration`.
-
 ## 1. Overview
 
-The plugin exposes a Model Context Protocol (MCP) server using Streamable HTTP transport.
+The plugin exposes NodeBB functionality through the Model Context Protocol (MCP) using Streamable HTTP transport.
+
+The MCP endpoint is:
+
+```text
+/mcp
+```
+
+The MCP server runs as a separate child process managed by the NodeBB plugin. It communicates with NodeBB through an internal HTTP API protected by a separate automatically generated authentication token.
+
+The plugin supports two MCP client authentication modes:
+
+- **OAuth 2.0** — the default mode. Each client authorizes a specific NodeBB user and operates with that user's permissions.
+- **Legacy Bearer Token** — a backward-compatible mode in which all clients share one static token and operate as a configured NodeBB service user.
 
 Architecture:
 
 ```text
 MCP client
     |
-    | Streamable HTTP + Bearer token
+    | Streamable HTTP
+    | OAuth access token OR legacy Bearer token
     v
 MCP child process
     |
-    | Internal HTTP API + separate Bearer token
+    | Internal HTTP API
+    | Separate internal authentication token
     v
 NodeBB integration plugin
     |
+    | User-scoped NodeBB API calls
+    | Native permission checks
     v
-Native NodeBB APIs and permission checks
+NodeBB
 ```
 
-The MCP process runs separately from the NodeBB application process and is managed by the plugin.
+The plugin provides 15 MCP tools for forum information, reading, searching and content management.
 
-All write operations use the NodeBB account configured as `mcpServiceUid`. MCP clients cannot select or override the acting user.
+All operations are subject to NodeBB permissions for the acting user.
+
+The `search_knowledge` tool additionally requires the OpenAI provider and a configured Qdrant instance.
 
 ## 2. Configuration
 
-Configure MCP in NodeBB ACP → Plugins → NodeBB Integration.
+MCP configuration is managed through:
+
+**NodeBB ACP → Plugins → NodeBB Integration**
 
 | Setting | Description |
 |---|---|
 | Enable MCP | Enables or disables the MCP server |
-| Bind address | Network interface used by the MCP HTTP server |
+| Authentication mode | OAuth 2.0 or Legacy Bearer Token |
+| Bind address | Network interface on which the MCP HTTP server listens |
 | Port | MCP HTTP port |
-| NodeBB URL | URL used by the MCP process to reach NodeBB |
-| Bearer token | Secret required by MCP clients |
-| Service user UID | NodeBB account used for permission checks and write operations | . Required; must be a positive integer. 
+| NodeBB URL | Internal URL used by the MCP process to reach NodeBB |
+| Bearer token | Shared client authentication token; used only in Legacy Bearer mode |
+| Service user UID | NodeBB account used for MCP operations; used only in Legacy Bearer mode |
 
-Default values:
+Default connection settings:
 
-- Bind address: `127.0.0.1`
-- Port: `3100`
-- NodeBB URL: `http://127.0.0.1:4567`
+```text
+Bind address: 127.0.0.1
+Port:         3100
+NodeBB URL:   http://127.0.0.1:4567
+```
 
-The plugin generates and stores a separate internal API token automatically.
+The default bind address restricts the MCP listener to localhost. Change it only when remote access is intentionally required and the network exposure is secured.
 
-The external MCP Bearer token and internal API token are different secrets.
+When exposing MCP through a reverse proxy, publish the external `/mcp` endpoint over HTTPS.
 
-Do not expose the internal API token to MCP clients.
+The plugin automatically generates a separate random token for its internal API. This token is used only between the MCP child process and the NodeBB plugin. It is distinct from MCP client credentials and must never be shared with MCP clients.
+
+### Authentication mode
+
+OAuth 2.0 is the default authentication mode.
+
+In OAuth mode:
+
+- Each MCP client authorizes an individual NodeBB user.
+- MCP operations use the UID of the authenticated user.
+- NodeBB permissions are checked for that user.
+- The shared MCP Bearer token and Service user UID settings are not used.
+
+Legacy Bearer Token mode is available for backward compatibility.
+
+In Legacy Bearer mode:
+
+- All MCP clients use the same configured static Bearer token.
+- MCP operations use the configured Service user UID.
+- NodeBB permissions are checked for that service user.
+
+The Service user UID must identify a valid NodeBB user when Legacy Bearer mode is used.
 
 ## 3. Authentication and permissions
 
-MCP clients authenticate with:
+### 3.1. OAuth 2.0
+
+OAuth 2.0 is the default authentication mode.
+
+The plugin implements the OAuth 2.0 Authorization Code flow with PKCE using the `S256` code challenge method.
+
+MCP clients are public clients and do not use a client secret.
+
+#### Authorization server metadata
+
+The OAuth authorization server metadata is published at:
+
+```text
+https://forum.example.com/.well-known/oauth-authorization-server
+```
+
+The metadata advertises these endpoints:
+
+| Endpoint | Path |
+|---|---|
+| Authorization | `/oauth/authorize` |
+| Token | `/oauth/token` |
+| Token revocation | `/oauth/revoke` |
+| Authorization server metadata | `/.well-known/oauth-authorization-server` |
+
+The supported scope is:
+
+```text
+mcp
+```
+
+The server supports the following grant types:
+
+- `authorization_code`
+- `refresh_token`
+
+The token endpoint authentication method is `none`, because MCP clients are public clients.
+
+PKCE with `S256` is required.
+
+#### Client identification and metadata
+
+The plugin supports Client ID Metadata Documents (CIMD).
+
+A client identifies itself using an HTTPS URL as its `client_id`. The URL points to a metadata document describing the OAuth client.
+
+The metadata document must satisfy the following requirements:
+
+- `client_id` must match the metadata document URL.
+- `client_name` is required.
+- `redirect_uris` must contain between 1 and 20 valid redirect URIs.
+- Redirect URIs must use HTTPS or an allowed HTTP loopback address.
+- HTTP loopback redirects are permitted for native applications using `localhost`, `127.0.0.1` or `[::1]`.
+- `client_secret` must not be provided.
+- `token_endpoint_auth_method` must be `none`.
+- `response_types` must contain `code`.
+- `grant_types` must include `authorization_code`. `refresh_token` is also supported.
+
+The metadata document is retrieved over HTTPS.
+
+For security, the metadata fetcher:
+
+- Rejects IP-literal hostnames.
+- Resolves the hostname and requires public unicast IP addresses.
+- Pins the validated DNS lookup to the connection to mitigate DNS rebinding.
+- Verifies TLS certificates.
+- Uses a five-second timeout.
+- Limits the response body to 64 KiB.
+- Requires an HTTP 200 response and JSON content type.
+
+#### User consent and client authorization
+
+When a user connects a new OAuth client:
+
+1. The plugin retrieves and validates the client's metadata document.
+2. The user authenticates with NodeBB.
+3. NodeBB displays an explicit consent screen.
+4. After the user approves access, the client is automatically authorized for that user.
+
+A previously approved client does not require consent again while its authorization grant and client metadata remain valid. If the grant is revoked or the client's metadata changes, the user must approve authorization again.
+
+A new client requires explicit user approval.
+
+Each authorized client is associated with the NodeBB user who granted access. MCP operations use that user's UID and permissions.
+
+#### Token lifetime and refresh
+
+OAuth tokens are opaque values. Token hashes are stored in Redis rather than the original token values.
+
+| Token | Lifetime |
+|---|---|
+| Authorization code | 5 minutes |
+| Access token | 15 minutes |
+| Refresh token | 30 days |
+
+Refresh tokens are rotated when used.
+
+The plugin tracks refresh token families and detects reuse of previously rotated refresh tokens. Detected replay results in revocation of the affected refresh token family.
+
+#### Managing access and revoking clients
+
+Users can manage MCP access from their NodeBB account page:
+
+```text
+/user/<userslug>/integration
+```
+
+The account page allows users to:
+
+- Enable or disable MCP access globally.
+- View authorized MCP clients.
+- Revoke an individual client's authorization.
+
+Disabling global MCP access invalidates existing OAuth tokens.
+
+Enabling access again does not restore previously invalidated tokens. Clients must authorize again.
+
+The OAuth token revocation endpoint is:
+
+```text
+POST /oauth/revoke
+```
+
+### 3.2. Legacy Bearer Token
+
+Legacy Bearer Token mode is provided for backward compatibility.
+
+Clients authenticate by sending the configured shared token in the HTTP Authorization header:
 
 ```http
 Authorization: Bearer YOUR_MCP_TOKEN
 ```
 
-The MCP child process authenticates its requests to NodeBB using the separate internal API token.
+All clients using this token operate as the NodeBB user configured by the Service user UID setting.
 
-The internal API rejects requests when MCP is disabled or the internal token is invalid.
+The service user's NodeBB permissions determine which operations are allowed.
 
-### Acting user
+Use this mode only when compatibility with an existing Bearer-token integration is required.
 
-The configured `mcpServiceUid` is used for:
+### 3.3. Internal API authentication
 
-- Reading posts and topics with permission checks.
-- Semantic search access filtering.
-- Listing topics and posts.
-- Creating topics and replies.
-- Editing, deleting and restoring posts.
-- Deleting and restoring topics.
-- Bulk deletion of a user's replies.
+The MCP child process communicates with the NodeBB plugin through a private internal HTTP API.
 
-The `uid` argument of `delete_user_posts` identifies the target account whose replies are processed. It does not identify the acting account.
+This API uses a separate automatically generated authentication token.
 
-### NodeBB permissions
+The internal token:
 
-Write operations use native NodeBB methods. Native permission checks, restrictions and hooks are preserved.
+- Is distinct from OAuth access tokens and the legacy MCP Bearer token.
+- Is used only for communication between the MCP child process and the NodeBB plugin.
+- Must never be shared with external MCP clients.
 
-Examples include:
+Internal API routes require authentication and are disabled when MCP is disabled.
 
-- Category permissions for topic creation.
-- Topic reply permissions and topic lock restrictions.
-- Post edit permissions and edit restrictions.
-- Post and topic delete/restore permissions.
-- NodeBB hooks associated with these operations.
+In OAuth mode, the authenticated user's identity is validated by the plugin before MCP operations are executed.
 
-Read operations that return post or topic content apply NodeBB access checks.
+### 3.4. Acting user and permissions
 
-`get_user` returns public profile fields and does not expose private account data.
+The acting user depends on the configured authentication mode:
 
-Access-check failures deny access.
+| Authentication mode | Acting user |
+|---|---|
+| OAuth 2.0 | NodeBB user who authorized the MCP client |
+| Legacy Bearer Token | NodeBB user configured by Service user UID |
+
+Read and write operations use NodeBB's native APIs and permission checks.
+
+The client cannot override the acting user's UID.
+
+The `uid` argument of `delete_user_posts` identifies the target account whose posts are to be deleted. It does not change the acting user.
+
+### 3.5. Read access and privacy
+
+Read operations apply NodeBB access checks.
+
+A user can retrieve only content that the acting account is permitted to access.
+
+Semantic search results are also filtered using the acting user's permissions. Vector similarity alone does not grant access to a post or topic.
+
+The plugin validates retrieved post metadata against NodeBB before returning post content.
+
+The `get_user` tool returns only the selected public profile fields. It does not expose private account information.
 
 ## 4. Common argument rules
 
@@ -139,14 +322,14 @@ Example:
 {
   "title": "Example Forum",
   "url": "https://forum.example.com",
-  "version": "4.16.7",
+  "version": "4.16.8",
   "language": "en-GB"
 }
 ```
 
 ### 5.2 get_post
 
-Retrieves a post by ID after checking whether the configured service user can read both the post and its topic.
+Retrieves a post by ID after checking whether the acting user can read both the post and its topic.
 
 Arguments:
 
@@ -173,7 +356,7 @@ Response:
 | content | string | Post content |
 | timestamp | NodeBB timestamp | Post creation timestamp |
 
-Deleted posts, missing posts and posts inaccessible to the service user are reported as not found.
+Deleted posts, missing posts and posts inaccessible to the acting user are reported as not found.
 
 ### 5.3 get_topic
 
@@ -210,7 +393,7 @@ The tool returns topic metadata, not the complete list of posts. Use `list_posts
 
 Returns public profile information for a user.
 
-The `uid` argument identifies the user whose public profile is requested. It does not change the service user or determine which account performs operations.
+The `uid` argument identifies the user whose public profile is requested. It does not change the acting user or determine which account performs operations.
 
 Arguments:
 
@@ -292,7 +475,7 @@ Search behavior:
 1. Generates an embedding for the query.
 2. Searches Qdrant for candidate posts.
 3. Checks candidate category exclusions.
-4. Checks post and topic read permissions for the service user.
+4. Checks post and topic read permissions for the acting user.
 5. Retrieves permitted post content from NodeBB.
 6. Returns at most the requested number of valid results.
 
@@ -302,7 +485,7 @@ In Fake AI mode, the tool returns an AI-disabled error. It does not perform sema
 
 ### 5.6 create_topic
 
-Creates a topic in a NodeBB category as the configured service user.
+Creates a topic in a NodeBB category as the acting user.
 
 Arguments:
 
@@ -380,7 +563,7 @@ The response is the native NodeBB operation result.
 
 ### 5.9 list_topics
 
-Lists topics visible to the configured service user.
+Lists topics visible to the acting user.
 
 Arguments:
 
@@ -445,7 +628,7 @@ Example:
 }
 ```
 
-The reply is created as the configured service user.
+The reply is created as the acting user.
 
 NodeBB checks reply permissions, topic state, category permissions and native posting restrictions.
 
@@ -471,7 +654,7 @@ Example:
 }
 ```
 
-The configured service user is the acting user.
+The operation is performed with the acting user's permissions.
 
 NodeBB applies native edit permissions and restrictions. Native hooks and edit history behavior are preserved.
 
@@ -547,7 +730,7 @@ Example:
 }
 ```
 
-The configured service user performs the deletion. The supplied `uid` identifies the target author only.
+The acting user performs the deletion. The supplied `uid` identifies the target author only.
 
 The operation processes posts sequentially and continues after individual deletion failures.
 
@@ -654,7 +837,8 @@ Response:
 
 Post record fields are provided by the installed NodeBB version.
 
-The service user's topic read permission is checked before the post list is retrieved. Deleted or inaccessible topics are not returned.
+The acting user's topic read permission is checked before the post list is retrieved. Deleted or inaccessible topics are not returned.
+
 ## 6. Pagination
 
 The listing tools use zero-based offsets.
@@ -700,14 +884,14 @@ Bulk deletion is different from single-item operations: individual failures are 
 - Deletion tools perform soft deletion, not permanent purge.
 - `delete_user_posts` skips topic main posts.
 - Restoring a topic does not restore separately deleted posts.
-- Semantic search returns only posts accessible to the configured service user.
+- Semantic search returns only posts accessible to the acting user.
 - The plugin does not trust a client-supplied acting UID.
 
 ## 9. Compatibility
 
 The plugin targets NodeBB 4.x and requires Node.js >= 22.
 
-The 0.6.1 implementation was checked against NodeBB 4.16.7.
+The 0.6.2 implementation was checked against NodeBB 4.16.8.
 
 Native NodeBB response fields may vary between NodeBB versions. The plugin uses native NodeBB methods for creation, editing, deletion, restoration and listing.
 

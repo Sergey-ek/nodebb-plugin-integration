@@ -1,40 +1,62 @@
-# OAuth storage adapters — TODO
+# OAuth storage adapters — status
 
-The Redis adapter is the first implementation.
-MongoDB and PostgreSQL adapters are intentionally deferred.
+## Redis
 
-All adapters must implement the contract in `index.js` with identical
-semantics and atomicity guarantees.
+- Implemented and verified.
+- Uses the initialized NodeBB Redis client.
+- Atomic operations implemented with Lua scripts.
+- Serves as the behavioral reference for other adapters.
 
-## MongoDB adapter (`mongo.js`)
+## MongoDB
 
-- Use the initialized NodeBB `database.client` (MongoDB Db instance).
-- Create separate collections for authorization codes, access tokens,
-  and refresh-token families.
-- Add unique indexes for token hashes and family IDs.
-- Consume authorization codes atomically with `findOneAndDelete`.
-- Implement refresh rotation as an atomic single-document operation.
-- Detect reuse of previously rotated refresh tokens and revoke the family.
-- Add TTL indexes for automatic cleanup.
-- Independently check expiration during reads; MongoDB TTL cleanup is
-  asynchronous and is not an authorization check.
-- Verify compatibility with the MongoDB driver version bundled with NodeBB.
-- Add integration tests against a real MongoDB instance.
+- Adapter implemented in `mongo.js`.
+- Uses the initialized NodeBB MongoDB Db instance.
+- Uses separate collections for authorization codes, access tokens,
+  refresh families, and user access/grants/consents.
+- TTL indexes implemented for authorization codes, access tokens,
+  and refresh families.
+- Consent transactions are embedded in user documents and do not have
+  automatic TTL cleanup.
+- Expired consent records are cleaned opportunistically for the current
+  user and for duplicate transaction IDs.
+- Atomic single-document operations implemented.
+- Factory integration and storage contract tests pass.
+- Real MongoDB integration tests are pending.
+- Do not consider production behavior verified until integration tests pass.
 
-## PostgreSQL adapter (`postgres.js`)
+## PostgreSQL
 
-- Use the initialized NodeBB `database.pool`.
-- Create tables for authorization codes, access tokens,
-  and refresh-token families.
-- Add primary keys, unique constraints, and indexes for token hashes
-  and expiration timestamps.
-- Consume authorization codes atomically with `DELETE ... RETURNING`.
-- Rotate refresh tokens in a transaction using `SELECT ... FOR UPDATE`
-  and an update in the same transaction.
-- Revoke the family on refresh-token reuse in that transaction.
-- Add periodic cleanup for expired records; PostgreSQL has no built-in
-  TTL deletion mechanism equivalent to Redis.
-- Add integration tests against a real PostgreSQL instance.
+- Adapter implemented in `postgres.js`.
+- Uses the initialized NodeBB `database.pool`.
+- Schema is initialized lazily.
+- Uses separate tables for authorization codes, access tokens,
+  refresh families, user access, client grants, and consent transactions.
+- Authorization-code consumption uses DELETE ... RETURNING.
+- Refresh rotation uses a transaction and SELECT ... FOR UPDATE.
+- Refresh-token reuse revokes the family.
+- Consent approval uses a transaction and row locks.
+- Expiration is checked during reads and mutations.
+- Expired records are removed opportunistically only when creating
+  a record with the same ID; there is no global cleanup mechanism.
+- Factory integration and storage contract tests pass.
+- Real PostgreSQL integration tests are pending.
+- Do not consider production behavior verified until integration tests pass.
+
+## Cross-adapter audit — pending
+
+- Add shared behavioral contract tests for grants and user access.
+- Cover grant creation, updates, revocation, repeated revocation,
+  version increments, and concurrent operations.
+- Cover edge cases involving missing enabled/version fields.
+- Compare createdAt handling for null, false, zero, and empty string.
+- Verify behavior against the Redis adapter before changing MongoDB
+  or PostgreSQL implementations.
+- Review whether PostgreSQL index oauth_grants_uid_idx is redundant
+  with the primary key (uid, client_hash).
+- Consider bounded periodic cleanup for expired PostgreSQL records.
+- Consider cleanup for expired MongoDB consent entries embedded in users.
+- Do not claim MongoDB or PostgreSQL behavior is verified until
+  real database integration tests pass.
 
 ## Requirements for every adapter
 
@@ -42,7 +64,6 @@ semantics and atomicity guarantees.
 - Preserve the original refresh-family expiration during rotation.
 - Authorization-code consumption must be atomic and one-time.
 - Refresh rotation and reuse detection must be atomic.
-- Match the Redis adapter's return values and error semantics.
-- Never implement atomic operations as a separate read followed by delete.
+- Match Redis return values and error semantics.
 - Test concurrent requests, expired records, duplicate creation,
   token reuse, revocation, and expiration boundaries.

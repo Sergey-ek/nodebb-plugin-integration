@@ -3,6 +3,7 @@
 const crypto = require("crypto");
 
 const Config = require("../config");
+const I18n = require("../i18n");
 const Search = require("../ai/search");
 const Categories = require("../nodebb/categories");
 const Meta = require("../nodebb/meta");
@@ -642,7 +643,7 @@ exports.renderAdmin = async function (req, res) {
             }));
 
         return res.render("admin/plugins/integration", {
-            title: "NodeBB Integration",
+            title: await I18n.translate(req, res, "menu-admin-title", true),
             settings,
             categories
         });
@@ -650,7 +651,7 @@ exports.renderAdmin = async function (req, res) {
         console.error("[NodeBB Integration] ACP render failed:", error);
 
         return res.status(500).render("500", {
-            title: "NodeBB Integration error"
+            title: await I18n.translate(req, res, "error-integration", true)
         });
     }
 };

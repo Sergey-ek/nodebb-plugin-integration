@@ -1,5 +1,7 @@
 "use strict";
 
+const I18n = require("../i18n");
+
 const crypto = require("node:crypto");
 const Meta = require("../nodebb/meta");
 const Discovery = require("../oauth/discovery");
@@ -672,11 +674,16 @@ function isValidConsentTransaction(transaction) {
     );
 }
 
-function renderConsentError(res, status, message) {
+async function renderConsentError(req, res, status, key) {
     setNoStore(res);
 
+    const [title, message] = await Promise.all([
+        I18n.translate(req, res, "consent-title"),
+        I18n.translate(req, res, key)
+    ]);
+
     return res.status(status).render("oauth/consent", {
-        title: "MCP access authorization",
+        title,
         errorMessage: message,
         clientName: "",
         transactionId: "",
@@ -734,7 +741,7 @@ exports.consent = async function (req, res) {
         typeof transactionParam !== "string" ||
         !/^[a-f0-9]{64}$/.test(transactionParam)
     ) {
-        return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+        return renderConsentError(req, res, 400, "error-invalid-transaction");
     }
 
     try {
@@ -742,7 +749,7 @@ exports.consent = async function (req, res) {
         const transaction = await storage.getConsentTransaction(transactionParam);
 
         if (!isValidConsentTransaction(transaction)) {
-            return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+            return renderConsentError(req, res, 400, "error-invalid-transaction");
         }
 
         const uid = Number(req.user.uid);
@@ -751,23 +758,23 @@ exports.consent = async function (req, res) {
             transaction.uid !== uid ||
             transaction.sessionBindingHash !== createSessionBindingHash(req)
         ) {
-            return renderConsentError(res, 403, "This authorization request belongs to a different browser session.");
+            return renderConsentError(req, res, 403, "error-session-mismatch");
         }
 
         const current = await getCurrentConsentClient(transaction);
 
         if (current.error === "unavailable") {
-            return renderConsentError(res, 503, "The client information is temporarily unavailable. Please try again.");
+            return renderConsentError(req, res, 503, "error-client-unavailable");
         }
 
         if (current.error) {
-            return renderConsentError(res, 409, "The client registration has changed. Restart authorization from your MCP client.");
+            return renderConsentError(req, res, 409, "error-client-changed");
         }
 
         setNoStore(res);
 
         return res.status(200).render("oauth/consent", {
-            title: "MCP access authorization",
+            title: await I18n.translate(req, res, "consent-title"),
             clientName: current.client.clientName,
             transactionId: transactionParam,
             scopeLabels: transaction.scopes.join(", "),
@@ -775,13 +782,13 @@ exports.consent = async function (req, res) {
         });
     } catch (error) {
         console.error("[Integration] OAuth consent page failed:", error);
-        return renderConsentError(res, 500, "The authorization page could not be loaded. Please try again.");
+        return renderConsentError(req, res, 500, "error-consent-load");
     }
 };
 
 exports.consentDecision = async function (req, res) {
     if (!isFormUrlEncoded(req)) {
-        return renderConsentError(res, 400, "Invalid form submission.");
+        return renderConsentError(req, res, 400, "error-invalid-form");
     }
 
     if (req.headers && req.headers.authorization) {
@@ -789,7 +796,7 @@ exports.consentDecision = async function (req, res) {
     }
 
     if (!hasBrowserSession(req)) {
-        return renderConsentError(res, 401, "Please sign in to your forum account and try again.");
+        return renderConsentError(req, res, 401, "error-login-required");
     }
 
     const transactionId = getFormParam(req.body, "transaction", 64);
@@ -800,7 +807,7 @@ exports.consentDecision = async function (req, res) {
         !/^[a-f0-9]{64}$/.test(transactionId) ||
         (decision !== "approve" && decision !== "deny")
     ) {
-        return renderConsentError(res, 400, "Invalid form submission.");
+        return renderConsentError(req, res, 400, "error-invalid-form");
     }
 
     try {
@@ -808,7 +815,7 @@ exports.consentDecision = async function (req, res) {
         const transaction = await storage.getConsentTransaction(transactionId);
 
         if (!isValidConsentTransaction(transaction)) {
-            return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+            return renderConsentError(req, res, 400, "error-invalid-transaction");
         }
 
         const uid = Number(req.user.uid);
@@ -818,7 +825,7 @@ exports.consentDecision = async function (req, res) {
             transaction.uid !== uid ||
             transaction.sessionBindingHash !== sessionBindingHash
         ) {
-            return renderConsentError(res, 403, "This authorization request belongs to a different browser session.");
+            return renderConsentError(req, res, 403, "error-session-mismatch");
         }
 
         const expected = {
@@ -834,7 +841,7 @@ exports.consentDecision = async function (req, res) {
             );
 
             if (!consumed) {
-                return renderConsentError(res, 400, "The authorization request has already been used or has expired.");
+                return renderConsentError(req, res, 400, "error-transaction-used");
             }
 
             return redirectOAuthError(
@@ -848,11 +855,11 @@ exports.consentDecision = async function (req, res) {
         const current = await getCurrentConsentClient(transaction);
 
         if (current.error === "unavailable") {
-            return renderConsentError(res, 503, "The client information is temporarily unavailable. Please try again.");
+            return renderConsentError(req, res, 503, "error-client-unavailable");
         }
 
         if (current.error) {
-            return renderConsentError(res, 409, "The client registration has changed. Restart authorization from your MCP client.");
+            return renderConsentError(req, res, 409, "error-client-changed");
         }
 
         const approval = await storage.approveConsentTransaction(
@@ -869,10 +876,10 @@ exports.consentDecision = async function (req, res) {
 
         if (!approval || approval.status !== "approved") {
             if (approval && approval.status === "disabled") {
-                return renderConsentError(res, 403, "MCP access is currently disabled for your forum account.");
+                return renderConsentError(req, res, 403, "error-access-disabled");
             }
 
-            return renderConsentError(res, 400, "The authorization request has already been used or has expired.");
+            return renderConsentError(req, res, 400, "error-transaction-used");
         }
 
         const code = await issueAuthorizationCode(storage, {
@@ -896,7 +903,7 @@ exports.consentDecision = async function (req, res) {
         return res.redirect(302, destination.toString());
     } catch (error) {
         console.error("[Integration] OAuth consent decision failed:", error);
-        return renderConsentError(res, 500, "The authorization decision could not be processed. Please try again.");
+        return renderConsentError(req, res, 500, "error-consent-process");
     }
 };
 

@@ -40,24 +40,86 @@ describe("OAuth storage factory", function () {
         assert.equal(typeof storage.rotateRefreshToken, "function");
     });
 
-    it("defers MongoDB support", function () {
-        assert.throws(
-            () => createStorageFromDatabase({
-                client: {
-                    collection() {}
+    it("selects MongoDB and exposes the complete storage contract", function () {
+        const collections = new Map();
+
+        const database = {
+            collection(name) {
+                if (!collections.has(name)) {
+                    collections.set(name, {
+                        async createIndex() {
+                            return name;
+                        }
+                    });
                 }
-            }),
-            /MongoDB storage is not implemented/
-        );
+
+                return collections.get(name);
+            }
+        };
+
+        const storage = createStorageFromDatabase({ client: database });
+
+        assert.equal(typeof storage.createAuthorizationCode, "function");
+        assert.equal(typeof storage.consumeAuthorizationCode, "function");
+        assert.equal(typeof storage.createAccessToken, "function");
+        assert.equal(typeof storage.getAccessToken, "function");
+        assert.equal(typeof storage.revokeAccessToken, "function");
+        assert.equal(typeof storage.createRefreshFamily, "function");
+        assert.equal(typeof storage.getRefreshFamily, "function");
+        assert.equal(typeof storage.rotateRefreshToken, "function");
+        assert.equal(typeof storage.revokeRefreshFamily, "function");
+        assert.equal(typeof storage.getUserAccess, "function");
+        assert.equal(typeof storage.setUserAccess, "function");
+        assert.equal(typeof storage.getClientGrant, "function");
+        assert.equal(typeof storage.listClientGrants, "function");
+        assert.equal(typeof storage.setClientGrant, "function");
+        assert.equal(typeof storage.revokeClientGrant, "function");
+        assert.equal(typeof storage.getConsentTransaction, "function");
+        assert.equal(typeof storage.createConsentTransaction, "function");
+        assert.equal(typeof storage.approveConsentTransaction, "function");
+        assert.equal(typeof storage.consumeConsentTransaction, "function");
+        assert.equal(Object.isFrozen(storage), true);
     });
 
-    it("defers PostgreSQL support", function () {
-        assert.throws(
-            () => createStorageFromDatabase({
-                client: {},
-                pool: {}
-            }),
-            /PostgreSQL storage is not implemented/
-        );
+    it("selects PostgreSQL and exposes the complete storage contract", function () {
+        const pool = {
+            async query() {
+                return { rows: [], rowCount: 0 };
+            },
+            async connect() {
+                return {
+                    async query() {
+                        return { rows: [], rowCount: 0 };
+                    },
+                    release() {}
+                };
+            }
+        };
+
+        const storage = createStorageFromDatabase({
+            client: pool,
+            pool
+        });
+
+        assert.equal(typeof storage.createAuthorizationCode, "function");
+        assert.equal(typeof storage.consumeAuthorizationCode, "function");
+        assert.equal(typeof storage.createAccessToken, "function");
+        assert.equal(typeof storage.getAccessToken, "function");
+        assert.equal(typeof storage.revokeAccessToken, "function");
+        assert.equal(typeof storage.createRefreshFamily, "function");
+        assert.equal(typeof storage.getRefreshFamily, "function");
+        assert.equal(typeof storage.rotateRefreshToken, "function");
+        assert.equal(typeof storage.revokeRefreshFamily, "function");
+        assert.equal(typeof storage.getUserAccess, "function");
+        assert.equal(typeof storage.setUserAccess, "function");
+        assert.equal(typeof storage.getClientGrant, "function");
+        assert.equal(typeof storage.listClientGrants, "function");
+        assert.equal(typeof storage.setClientGrant, "function");
+        assert.equal(typeof storage.revokeClientGrant, "function");
+        assert.equal(typeof storage.getConsentTransaction, "function");
+        assert.equal(typeof storage.createConsentTransaction, "function");
+        assert.equal(typeof storage.approveConsentTransaction, "function");
+        assert.equal(typeof storage.consumeConsentTransaction, "function");
+        assert.equal(Object.isFrozen(storage), true);
     });
 });
