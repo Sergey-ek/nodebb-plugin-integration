@@ -1,8 +1,10 @@
 "use strict";
 
 const assert = require("node:assert/strict");
+const crypto = require("node:crypto");
 const { describe, it } = require("mocha");
 const proxyquire = require("proxyquire").noCallThru();
+const ClientFingerprint = require("../src/oauth/client-fingerprint");
 
 function createResponse() {
     return {
@@ -11,6 +13,8 @@ function createResponse() {
         body: null,
         redirectCode: null,
         redirectUrl: null,
+        renderedView: null,
+        renderedData: null,
 
         set(name, value) {
             this.headers[name] = value;
@@ -24,6 +28,12 @@ function createResponse() {
 
         json(value) {
             this.body = value;
+            return this;
+        },
+
+        render(view, data) {
+            this.renderedView = view;
+            this.renderedData = data;
             return this;
         },
 
@@ -45,6 +55,7 @@ function createBrowserRequest(overrides = {}) {
             code_challenge_method: "S256",
             state: "test-state"
         }).toString(),
+        sessionID: "test-browser-session",
         headers: {},
         user: { uid: 42 },
         uid: 42,
@@ -56,15 +67,117 @@ function createBrowserRequest(overrides = {}) {
     };
 }
 
+function createConsentTransaction(overrides = {}) {
+    const metadata = {
+        clientId: "https://client.example.com/metadata.json",
+        clientName: "Test MCP Client",
+        redirectUris: ["http://127.0.0.1:3344/callback"],
+        grantTypes: ["authorization_code", "refresh_token"],
+        responseTypes: ["code"],
+        tokenEndpointAuthMethod: "none"
+    };
+
+    return {
+        uid: 42,
+        clientId: metadata.clientId,
+        clientName: metadata.clientName,
+        metadataFingerprint: ClientFingerprint.createClientFingerprint(metadata),
+        sessionBindingHash: crypto.createHash("sha256")
+            .update("test-browser-session", "utf8")
+            .digest("hex"),
+        redirectUri: "http://127.0.0.1:3344/callback",
+        state: "test-state",
+        codeChallenge: "A".repeat(43),
+        codeChallengeMethod: "S256",
+        scopes: ["mcp"],
+        createdAt: 1700000000000,
+        ...overrides
+    };
+}
+
+function createConsentRequest(transactionId, overrides = {}) {
+    return createBrowserRequest({
+        url: "/oauth/consent?transaction=" + encodeURIComponent(transactionId),
+        ...overrides
+    });
+}
+
+function createConsentPostRequest(transactionId, decision, overrides = {}) {
+    return createBrowserRequest({
+        url: "/oauth/consent",
+        headers: { "content-type": "application/x-www-form-urlencoded" },
+        body: { transaction: transactionId, decision },
+        ...overrides
+    });
+}
+
 function createHarness(options = {}) {
     const captured = {
         codeHash: null,
         codeRecord: null,
         ttl: null,
-        fetchClientId: null
+        fetchClientId: null,
+        consentId: null,
+        consentTransaction: null,
+        consentTtl: null,
+        loadedConsentId: null,
+        approvedConsent: null,
+        consumedConsent: null
     };
 
+    const metadata = options.metadata || {
+        clientId: "https://client.example.com/metadata.json",
+        clientName: "Test MCP Client",
+        redirectUris: ["http://127.0.0.1:3344/callback"],
+        grantTypes: ["authorization_code", "refresh_token"],
+        responseTypes: ["code"],
+        tokenEndpointAuthMethod: "none"
+    };
+
+    const fingerprint =
+        ClientFingerprint.createClientFingerprint(metadata);
+
     const storage = {
+        async getConsentTransaction(id) {
+            captured.loadedConsentId = id;
+            return options.consentTransaction || null;
+        },
+
+        async approveConsentTransaction(id, expected, grantData) {
+            captured.approvedConsent = { id, expected, grantData };
+            return options.approvalResult === undefined ?
+                { status: "approved", grant: { uid: 42 } } :
+                options.approvalResult;
+        },
+
+        async consumeConsentTransaction(id, expected) {
+            captured.consumedConsent = { id, expected };
+            return options.consumeResult === undefined ?
+                true : options.consumeResult;
+        },
+
+        async getUserAccess() {
+            return options.userAccess === undefined ?
+                { enabled: true, version: 1 } : options.userAccess;
+        },
+
+        async getClientGrant() {
+            return options.clientGrant === undefined ?
+                {
+                    enabled: true,
+                    version: 1,
+                    metadataFingerprint: fingerprint
+                } : options.clientGrant;
+        },
+
+        async createConsentTransaction(id, data, ttl) {
+            captured.consentId = id;
+            captured.consentTransaction = data;
+            captured.consentTtl = ttl;
+            return options.consentResult === undefined ?
+                true : options.consentResult;
+        },
+
         async createAuthorizationCode(hash, record, ttl) {
             captured.codeHash = hash;
             captured.codeRecord = record;
@@ -81,10 +194,12 @@ function createHarness(options = {}) {
         "../oauth/client-metadata-fetcher": {
             fetchClientMetadata: async clientId => {
                 captured.fetchClientId = clientId;
+
                 if (options.fetchError) {
                     throw new Error("Metadata fetch failed");
                 }
-                return { clientId };
+
+                return metadata;
             }
         },
         "../oauth/client-metadata": {
@@ -102,7 +217,6 @@ function createHarness(options = {}) {
 
     return { route, captured };
 }
-
 
 function createRevokeHarness(options = {}) {
     const captured = {
@@ -287,6 +401,196 @@ describe("OAuth routes", function () {
             "generated-authorization-code"
         );
         assert.equal(destination.searchParams.has("state"), false);
+    });
+
+    it("creates a session-bound consent transaction for a new client", async function () {
+        const { route, captured } = createHarness({
+            clientGrant: null
+        });
+        const req = createBrowserRequest();
+        const res = createResponse();
+
+        const previousNodebb = global.nodebb;
+        global.nodebb = {
+            require(name) {
+                assert.equal(name, "nconf");
+                return {
+                    get: key => key === "relative_path" ? "/community" : null
+                };
+            }
+        };
+
+        try {
+            await route.authorize(req, res);
+        } finally {
+            if (previousNodebb === undefined) {
+                delete global.nodebb;
+            } else {
+                global.nodebb = previousNodebb;
+            }
+        }
+
+        assert.equal(res.redirectCode, 302);
+        assert.equal(res.headers["Cache-Control"], "no-store");
+        assert.equal(res.headers.Pragma, "no-cache");
+
+        const destination = new URL(res.redirectUrl, "https://forum.example.com");
+        assert.equal(destination.pathname, "/community/oauth/consent");
+
+        assert.match(captured.consentId, /^[a-f0-9]{64}$/);
+        assert.equal(
+            destination.searchParams.get("transaction"),
+            captured.consentId
+        );
+
+        assert.equal(captured.consentTtl, 300);
+        assert.equal(captured.codeRecord, null);
+        assert.equal(captured.codeHash, null);
+
+        const transaction = captured.consentTransaction;
+        assert.equal(transaction.uid, 42);
+        assert.equal(transaction.clientId, "https://client.example.com/metadata.json");
+        assert.equal(transaction.clientName, "Test MCP Client");
+        assert.equal(transaction.redirectUri, "http://127.0.0.1:3344/callback");
+        assert.equal(transaction.state, "test-state");
+        assert.equal(transaction.codeChallenge, "A".repeat(43));
+        assert.equal(transaction.codeChallengeMethod, "S256");
+        assert.deepStrictEqual(transaction.scopes, ["mcp"]);
+        assert.match(transaction.metadataFingerprint, /^[a-f0-9]{64}$/);
+        assert.match(transaction.sessionBindingHash, /^[a-f0-9]{64}$/);
+        assert.notEqual(transaction.sessionBindingHash, "test-browser-session");
+        assert.equal(typeof transaction.createdAt, "number");
+    });
+
+    it("renders consent for the matching browser session", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({ consentTransaction: transaction });
+        const res = createResponse();
+
+        await route.consent(createConsentRequest("a".repeat(64)), res);
+
+        assert.equal(captured.loadedConsentId, "a".repeat(64));
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.renderedView, "oauth/consent");
+        assert.equal(res.renderedData.clientName, "Test MCP Client");
+        assert.equal(res.headers["Cache-Control"], "no-store");
+    });
+
+    it("rejects consent from a different browser session", async function () {
+        const transaction = createConsentTransaction();
+        const { route } = createHarness({ consentTransaction: transaction });
+        const req = createConsentRequest("b".repeat(64), {
+            sessionID: "another-browser-session"
+        });
+        const res = createResponse();
+
+        await route.consent(req, res);
+
+        assert.equal(res.statusCode, 403);
+        assert.match(res.renderedData.errorMessage, /different browser session/);
+    });
+
+    it("rejects consent when client metadata has changed", async function () {
+        const transaction = createConsentTransaction();
+        const metadata = {
+            clientId: transaction.clientId,
+            clientName: "Changed MCP Client",
+            redirectUris: ["http://127.0.0.1:3344/callback"],
+            grantTypes: ["authorization_code", "refresh_token"],
+            responseTypes: ["code"],
+            tokenEndpointAuthMethod: "none"
+        };
+        const { route } = createHarness({ consentTransaction: transaction, metadata });
+        const res = createResponse();
+
+        await route.consent(createConsentRequest("c".repeat(64)), res);
+
+        assert.equal(res.statusCode, 409);
+    });
+
+    it("approves consent atomically and issues an authorization code", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({ consentTransaction: transaction });
+        const res = createResponse();
+
+        await route.consentDecision(createConsentPostRequest("d".repeat(64), "approve"), res);
+
+        assert.equal(captured.approvedConsent.id, "d".repeat(64));
+        assert.equal(captured.approvedConsent.expected.uid, 42);
+        assert.equal(captured.approvedConsent.expected.clientId, transaction.clientId);
+        assert.equal(captured.approvedConsent.expected.sessionBindingHash, transaction.sessionBindingHash);
+        assert.equal(captured.approvedConsent.expected.metadataFingerprint, transaction.metadataFingerprint);
+        assert.equal(captured.approvedConsent.grantData.clientName, "Test MCP Client");
+
+        assert.equal(res.redirectCode, 302);
+        const destination = new URL(res.redirectUrl);
+        assert.equal(destination.searchParams.get("code"), "generated-authorization-code");
+        assert.equal(destination.searchParams.get("state"), "test-state");
+        assert.equal(captured.codeRecord.uid, 42);
+        assert.equal(captured.codeRecord.redirectUri, transaction.redirectUri);
+        assert.deepStrictEqual(captured.codeRecord.scopes, ["mcp"]);
+    });
+
+    it("consumes denied consent and redirects access_denied", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({ consentTransaction: transaction });
+        const res = createResponse();
+
+        await route.consentDecision(createConsentPostRequest("e".repeat(64), "deny"), res);
+
+        assert.equal(captured.consumedConsent.id, "e".repeat(64));
+        assert.equal(captured.consumedConsent.expected.uid, 42);
+        assert.equal(captured.approvedConsent, null);
+        assert.equal(captured.codeRecord, null);
+
+        const destination = new URL(res.redirectUrl);
+        assert.equal(destination.searchParams.get("error"), "access_denied");
+        assert.equal(destination.searchParams.get("state"), "test-state");
+    });
+
+    it("does not issue a code for an already consumed transaction", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({
+            consentTransaction: transaction,
+            approvalResult: { status: "missing", grant: null }
+        });
+        const res = createResponse();
+
+        await route.consentDecision(createConsentPostRequest("f".repeat(64), "approve"), res);
+
+        assert.equal(res.statusCode, 400);
+        assert.equal(captured.codeRecord, null);
+    });
+
+    it("does not consume a transaction from a different session", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({ consentTransaction: transaction });
+        const req = createConsentPostRequest("1".repeat(64), "deny", {
+            sessionID: "different-session"
+        });
+        const res = createResponse();
+
+        await route.consentDecision(req, res);
+
+        assert.equal(res.statusCode, 403);
+        assert.equal(captured.consumedConsent, null);
+        assert.equal(captured.approvedConsent, null);
+        assert.equal(captured.codeRecord, null);
+    });
+
+    it("does not issue a code when global MCP access is disabled", async function () {
+        const transaction = createConsentTransaction();
+        const { route, captured } = createHarness({
+            consentTransaction: transaction,
+            approvalResult: { status: "disabled", grant: null }
+        });
+        const res = createResponse();
+
+        await route.consentDecision(createConsentPostRequest("2".repeat(64), "approve"), res);
+
+        assert.equal(res.statusCode, 403);
+        assert.equal(captured.approvedConsent.id, "2".repeat(64));
+        assert.equal(captured.codeRecord, null);
     });
 
     it("rejects API Bearer authentication for the browser authorization flow", async function () {
@@ -544,14 +848,25 @@ describe("OAuth routes", function () {
             assert.deepStrictEqual(captured.revokedFamilies, [familyId]);
         });
 
-        it("returns 400 when the client metadata cannot be verified", async function () {
-            const { route } = createRevokeHarness({ fetchError: true });
+        it("revokes tokens without depending on client metadata availability", async function () {
+            const { route, captured } = createRevokeHarness({
+                fetchError: true,
+                accessRecord: {
+                    clientId,
+                    familyId
+                }
+            });
             const res = createResponse();
 
             await route.revoke(createRevokeRequest(accessToken), res);
 
-            assert.equal(res.statusCode, 400);
-            assert.deepStrictEqual(res.body, { error: "invalid_client" });
+            assert.equal(res.statusCode, 200);
+            assert.deepStrictEqual(res.body, {});
+            assert.deepStrictEqual(
+                captured.revokedAccessTokens,
+                [`hash:${accessToken}`]
+            );
+            assert.deepStrictEqual(captured.revokedFamilies, [familyId]);
         });
 
         it("returns 500 when storage is unavailable", async function () {

@@ -1,5 +1,6 @@
 "use strict";
 
+const crypto = require("node:crypto");
 const Meta = require("../nodebb/meta");
 const Discovery = require("../oauth/discovery");
 const ClientMetadataFetcher = require("../oauth/client-metadata-fetcher");
@@ -7,9 +8,12 @@ const ClientMetadata = require("../oauth/client-metadata");
 const OAuthStorage = require("../oauth/storage/runtime");
 const Tokens = require("../oauth/tokens");
 const PKCE = require("../oauth/pkce");
+const Permissions = require("../oauth/permissions");
+const ClientFingerprint = require("../oauth/client-fingerprint");
 
 const SCOPES = Object.freeze(["mcp"]);
 const MAX_STATE_LENGTH = 1024;
+const CONSENT_TRANSACTION_TTL = 300;
 const CHALLENGE_PATTERN = /^[A-Za-z0-9_-]{43}$/;
 const REFRESH_TOKEN_PATTERN = /^([a-f0-9]{32})\.([A-Za-z0-9_-]{43})$/;
 
@@ -78,11 +82,29 @@ function hasBrowserSession(req) {
         req.session.passport.user
     );
 
-    return Number.isInteger(uid) &&
+    return typeof req.sessionID === "string" &&
+        req.sessionID.length > 0 &&
+        req.sessionID.length <= 256 &&
+        Number.isInteger(uid) &&
         uid > 0 &&
         uid === requestUid &&
         uid === sessionUid &&
         req.loggedIn === true;
+}
+
+function createSessionBindingHash(req) {
+    if (
+        !req ||
+        typeof req.sessionID !== "string" ||
+        req.sessionID.length === 0 ||
+        req.sessionID.length > 256
+    ) {
+        throw new TypeError("A valid browser session ID is required");
+    }
+
+    return crypto.createHash("sha256")
+        .update(req.sessionID, "utf8")
+        .digest("hex");
 }
 
 function redirectToLogin(req, res, requestUrl) {
@@ -230,10 +252,27 @@ async function exchangeAuthorizationCode(body, storage, clientId, client) {
         return { error: "invalid_grant" };
     }
 
+    const permissionSnapshot = await Permissions.getActivePermissionSnapshot(
+        storage,
+        record.uid,
+        client
+    );
+
+    if (!permissionSnapshot.active) {
+        return { error: "invalid_grant" };
+    }
+
+    const permissionFields = {
+        userAccessVersion: permissionSnapshot.userAccessVersion,
+        grantVersion: permissionSnapshot.grantVersion,
+        metadataFingerprint: permissionSnapshot.metadataFingerprint
+    };
+
     const refreshFamily = {
         uid: record.uid,
         clientId,
         scopes: [...SCOPES],
+        ...permissionFields,
         currentTokenHash: null,
         createdAt: Date.now()
     };
@@ -272,6 +311,7 @@ async function exchangeAuthorizationCode(body, storage, clientId, client) {
             clientId,
             scopes: [...SCOPES],
             familyId,
+            ...permissionFields,
             createdAt: Date.now()
         });
     } catch (error) {
@@ -282,7 +322,7 @@ async function exchangeAuthorizationCode(body, storage, clientId, client) {
     return { accessToken, refreshToken };
 }
 
-async function exchangeRefreshToken(body, storage, clientId) {
+async function exchangeRefreshToken(body, storage, clientId, client) {
     const presentedToken = getFormParam(body, "refresh_token", 256);
 
     if (!presentedToken) {
@@ -311,6 +351,27 @@ async function exchangeRefreshToken(body, storage, clientId) {
         return { error: "invalid_grant" };
     }
 
+    const permissionSnapshot = await Permissions.getActivePermissionSnapshot(
+        storage,
+        family.uid,
+        client
+    );
+
+    if (
+        !permissionSnapshot.active ||
+        family.userAccessVersion !== permissionSnapshot.userAccessVersion ||
+        family.grantVersion !== permissionSnapshot.grantVersion ||
+        family.metadataFingerprint !== permissionSnapshot.metadataFingerprint
+    ) {
+        return { error: "invalid_grant" };
+    }
+
+    const permissionFields = {
+        userAccessVersion: permissionSnapshot.userAccessVersion,
+        grantVersion: permissionSnapshot.grantVersion,
+        metadataFingerprint: permissionSnapshot.metadataFingerprint
+    };
+
     const nextRefreshToken = `${familyId}.${Tokens.generateToken()}`;
     const nextHash = Tokens.hashToken(nextRefreshToken);
 
@@ -335,6 +396,7 @@ async function exchangeRefreshToken(body, storage, clientId) {
             clientId,
             scopes: [...SCOPES],
             familyId,
+            ...permissionFields,
             createdAt: Date.now()
         });
     } catch (error) {
@@ -363,6 +425,25 @@ exports.authorizationServerMetadata = async function (req, res) {
         });
     }
 };
+
+async function issueAuthorizationCode(storage, record) {
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+        const candidate = Tokens.generateToken();
+        const hash = Tokens.hashToken(candidate);
+
+        const created = await storage.createAuthorizationCode(
+            hash,
+            record,
+            Tokens.TTL.authorizationCode
+        );
+
+        if (created === true) {
+            return candidate;
+        }
+    }
+
+    throw new Error("Could not create a unique authorization code");
+}
 
 exports.authorize = async function (req, res) {
     const requestUrl = getRequestUrl(req);
@@ -438,48 +519,384 @@ exports.authorize = async function (req, res) {
 
     try {
         const storage = OAuthStorage.get();
-        let authorizationCode = null;
+        const uid = Number(req.user.uid);
+
+        const permission = await Permissions.getActivePermissionSnapshot(
+            storage,
+            uid,
+            client
+        );
+
+        if (permission.reason === "user_access_disabled") {
+            return redirectOAuthError(
+                res,
+                redirectUri,
+                state,
+                "access_denied"
+            );
+        }
+
+        if (permission.active) {
+            const authorizationCode = await issueAuthorizationCode(storage, {
+                uid,
+                clientId,
+                redirectUri,
+                codeChallenge,
+                codeChallengeMethod: "S256",
+                scopes: [...SCOPES],
+                createdAt: Date.now()
+            });
+
+            const destination = new URL(redirectUri);
+            destination.searchParams.set("code", authorizationCode);
+
+            if (state !== null) {
+                destination.searchParams.set("state", state);
+            }
+
+            setNoStore(res);
+            return res.redirect(302, destination.toString());
+        }
+
+        const metadataFingerprint =
+            ClientFingerprint.createClientFingerprint(client);
+
+        const transaction = {
+            uid,
+            clientId,
+            clientName: client.clientName,
+            metadataFingerprint,
+            sessionBindingHash: createSessionBindingHash(req),
+            redirectUri,
+            state,
+            codeChallenge,
+            codeChallengeMethod: "S256",
+            scopes: [...SCOPES],
+            createdAt: Date.now()
+        };
+
+        let transactionId = null;
 
         for (let attempt = 0; attempt < 3; attempt += 1) {
-            const candidate = Tokens.generateToken();
-            const hash = Tokens.hashToken(candidate);
+            const candidate = crypto.randomBytes(32).toString("hex");
 
-            const created = await storage.createAuthorizationCode(
-                hash,
-                {
-                    uid: Number(req.user.uid),
-                    clientId,
-                    redirectUri,
-                    codeChallenge,
-                    codeChallengeMethod: "S256",
-                    scopes: [...SCOPES],
-                    createdAt: Date.now()
-                },
-                Tokens.TTL.authorizationCode
+            const created = await storage.createConsentTransaction(
+                candidate,
+                transaction,
+                CONSENT_TRANSACTION_TTL
             );
 
             if (created === true) {
-                authorizationCode = candidate;
+                transactionId = candidate;
                 break;
             }
         }
 
-        if (!authorizationCode) {
-            throw new Error("Could not create a unique authorization code");
+        if (!transactionId) {
+            throw new Error("Could not create a unique OAuth consent transaction");
         }
 
-        const destination = new URL(redirectUri);
-        destination.searchParams.set("code", authorizationCode);
+        const nconf = nodebb.require("nconf");
+        let relativePath = String(nconf.get("relative_path") || "");
+        relativePath = relativePath.replace(/\/+$/, "");
 
-        if (state !== null) {
-            destination.searchParams.set("state", state);
+        setNoStore(res);
+        return res.redirect(
+            302,
+            `${relativePath}/oauth/consent?transaction=${encodeURIComponent(transactionId)}`
+        );
+    } catch (error) {
+        console.error("[Integration] OAuth authorization failed:", error);
+        return redirectOAuthError(res, redirectUri, state, "server_error");
+    }
+};
+
+
+function getConsentRequestUrl(req) {
+    const target = req.url || req.originalUrl;
+
+    if (
+        typeof target !== "string" ||
+        !target.startsWith("/") ||
+        target.startsWith("//") ||
+        target.includes("\\")
+    ) {
+        return null;
+    }
+
+    try {
+        const url = new URL(target, "http://nodebb.invalid");
+
+        if (
+            url.origin !== "http://nodebb.invalid" ||
+            url.pathname !== "/oauth/consent"
+        ) {
+            return null;
+        }
+
+        return url;
+    } catch {
+        return null;
+    }
+}
+
+function isValidConsentTransaction(transaction) {
+    return Boolean(
+        transaction &&
+        typeof transaction === "object" &&
+        Number.isSafeInteger(transaction.uid) &&
+        transaction.uid > 0 &&
+        typeof transaction.clientId === "string" &&
+        transaction.clientId.length > 0 &&
+        typeof transaction.clientName === "string" &&
+        typeof transaction.metadataFingerprint === "string" &&
+        /^[a-f0-9]{64}$/.test(transaction.metadataFingerprint) &&
+        typeof transaction.sessionBindingHash === "string" &&
+        /^[a-f0-9]{64}$/.test(transaction.sessionBindingHash) &&
+        typeof transaction.redirectUri === "string" &&
+        transaction.redirectUri.length > 0 &&
+        typeof transaction.codeChallenge === "string" &&
+        CHALLENGE_PATTERN.test(transaction.codeChallenge) &&
+        transaction.codeChallengeMethod === "S256" &&
+        Array.isArray(transaction.scopes) &&
+        transaction.scopes.length > 0 &&
+        transaction.scopes.every(scope => SCOPES.includes(scope)) &&
+        (
+            transaction.state === null ||
+            (
+                typeof transaction.state === "string" &&
+                transaction.state.length <= MAX_STATE_LENGTH &&
+                !/[\u0000-\u001f\u007f]/.test(transaction.state)
+            )
+        )
+    );
+}
+
+function renderConsentError(res, status, message) {
+    setNoStore(res);
+
+    return res.status(status).render("oauth/consent", {
+        title: "MCP access authorization",
+        errorMessage: message,
+        clientName: "",
+        transactionId: "",
+        scopeLabels: ""
+    });
+}
+
+async function getCurrentConsentClient(transaction) {
+    const client = await fetchClient(transaction.clientId);
+
+    if (!client) {
+        return { error: "unavailable" };
+    }
+
+    if (!ClientMetadata.isRedirectUriAllowed(client, transaction.redirectUri)) {
+        return { error: "changed" };
+    }
+
+    let fingerprint;
+
+    try {
+        fingerprint = ClientFingerprint.createClientFingerprint(client);
+    } catch {
+        return { error: "changed" };
+    }
+
+    if (fingerprint !== transaction.metadataFingerprint) {
+        return { error: "changed" };
+    }
+
+    return { client };
+}
+
+exports.consent = async function (req, res) {
+    const requestUrl = getConsentRequestUrl(req);
+
+    if (!requestUrl) {
+        return oauthError(res, 400, "invalid_request");
+    }
+
+    if (req.headers && req.headers.authorization) {
+        return oauthError(res, 401, "login_required");
+    }
+
+    if (!hasBrowserSession(req)) {
+        return redirectToLogin(req, res, requestUrl);
+    }
+
+    const transactionParam = getSingleParam(
+        requestUrl.searchParams,
+        "transaction"
+    );
+
+    if (
+        typeof transactionParam !== "string" ||
+        !/^[a-f0-9]{64}$/.test(transactionParam)
+    ) {
+        return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+    }
+
+    try {
+        const storage = OAuthStorage.get();
+        const transaction = await storage.getConsentTransaction(transactionParam);
+
+        if (!isValidConsentTransaction(transaction)) {
+            return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+        }
+
+        const uid = Number(req.user.uid);
+
+        if (
+            transaction.uid !== uid ||
+            transaction.sessionBindingHash !== createSessionBindingHash(req)
+        ) {
+            return renderConsentError(res, 403, "This authorization request belongs to a different browser session.");
+        }
+
+        const current = await getCurrentConsentClient(transaction);
+
+        if (current.error === "unavailable") {
+            return renderConsentError(res, 503, "The client information is temporarily unavailable. Please try again.");
+        }
+
+        if (current.error) {
+            return renderConsentError(res, 409, "The client registration has changed. Restart authorization from your MCP client.");
+        }
+
+        setNoStore(res);
+
+        return res.status(200).render("oauth/consent", {
+            title: "MCP access authorization",
+            clientName: current.client.clientName,
+            transactionId: transactionParam,
+            scopeLabels: transaction.scopes.join(", "),
+            errorMessage: ""
+        });
+    } catch (error) {
+        console.error("[Integration] OAuth consent page failed:", error);
+        return renderConsentError(res, 500, "The authorization page could not be loaded. Please try again.");
+    }
+};
+
+exports.consentDecision = async function (req, res) {
+    if (!isFormUrlEncoded(req)) {
+        return renderConsentError(res, 400, "Invalid form submission.");
+    }
+
+    if (req.headers && req.headers.authorization) {
+        return oauthError(res, 401, "login_required");
+    }
+
+    if (!hasBrowserSession(req)) {
+        return renderConsentError(res, 401, "Please sign in to your forum account and try again.");
+    }
+
+    const transactionId = getFormParam(req.body, "transaction", 64);
+    const decision = getFormParam(req.body, "decision", 16);
+
+    if (
+        !transactionId ||
+        !/^[a-f0-9]{64}$/.test(transactionId) ||
+        (decision !== "approve" && decision !== "deny")
+    ) {
+        return renderConsentError(res, 400, "Invalid form submission.");
+    }
+
+    try {
+        const storage = OAuthStorage.get();
+        const transaction = await storage.getConsentTransaction(transactionId);
+
+        if (!isValidConsentTransaction(transaction)) {
+            return renderConsentError(res, 400, "The authorization request is invalid or has expired.");
+        }
+
+        const uid = Number(req.user.uid);
+        const sessionBindingHash = createSessionBindingHash(req);
+
+        if (
+            transaction.uid !== uid ||
+            transaction.sessionBindingHash !== sessionBindingHash
+        ) {
+            return renderConsentError(res, 403, "This authorization request belongs to a different browser session.");
+        }
+
+        const expected = {
+            uid,
+            clientId: transaction.clientId,
+            sessionBindingHash
+        };
+
+        if (decision === "deny") {
+            const consumed = await storage.consumeConsentTransaction(
+                transactionId,
+                expected
+            );
+
+            if (!consumed) {
+                return renderConsentError(res, 400, "The authorization request has already been used or has expired.");
+            }
+
+            return redirectOAuthError(
+                res,
+                transaction.redirectUri,
+                transaction.state,
+                "access_denied"
+            );
+        }
+
+        const current = await getCurrentConsentClient(transaction);
+
+        if (current.error === "unavailable") {
+            return renderConsentError(res, 503, "The client information is temporarily unavailable. Please try again.");
+        }
+
+        if (current.error) {
+            return renderConsentError(res, 409, "The client registration has changed. Restart authorization from your MCP client.");
+        }
+
+        const approval = await storage.approveConsentTransaction(
+            transactionId,
+            {
+                ...expected,
+                metadataFingerprint: transaction.metadataFingerprint
+            },
+            {
+                clientName: current.client.clientName,
+                metadataFingerprint: transaction.metadataFingerprint
+            }
+        );
+
+        if (!approval || approval.status !== "approved") {
+            if (approval && approval.status === "disabled") {
+                return renderConsentError(res, 403, "MCP access is currently disabled for your forum account.");
+            }
+
+            return renderConsentError(res, 400, "The authorization request has already been used or has expired.");
+        }
+
+        const code = await issueAuthorizationCode(storage, {
+            uid: transaction.uid,
+            clientId: transaction.clientId,
+            redirectUri: transaction.redirectUri,
+            codeChallenge: transaction.codeChallenge,
+            codeChallengeMethod: transaction.codeChallengeMethod,
+            scopes: transaction.scopes,
+            createdAt: transaction.createdAt
+        });
+
+        const destination = new URL(transaction.redirectUri);
+        destination.searchParams.set("code", code);
+
+        if (transaction.state !== null) {
+            destination.searchParams.set("state", transaction.state);
         }
 
         setNoStore(res);
         return res.redirect(302, destination.toString());
     } catch (error) {
-        console.error("[Integration] OAuth authorization failed:", error);
-        return redirectOAuthError(res, redirectUri, state, "server_error");
+        console.error("[Integration] OAuth consent decision failed:", error);
+        return renderConsentError(res, 500, "The authorization decision could not be processed. Please try again.");
     }
 };
 
@@ -512,12 +929,10 @@ exports.token = async function (req, res) {
     try {
         ClientMetadata.validateClientId(clientId);
 
-        if (grantType === "authorization_code") {
-            client = await fetchClient(clientId);
+        client = await fetchClient(clientId);
 
-            if (!client) {
-                return oauthError(res, 400, "invalid_client");
-            }
+        if (!client) {
+            return oauthError(res, 400, "invalid_client");
         }
     } catch {
         return oauthError(res, 400, "invalid_client");
@@ -527,7 +942,7 @@ exports.token = async function (req, res) {
         const storage = OAuthStorage.get();
         const result = grantType === "authorization_code" ?
             await exchangeAuthorizationCode(body, storage, clientId, client) :
-            await exchangeRefreshToken(body, storage, clientId);
+            await exchangeRefreshToken(body, storage, clientId, client);
 
         if (result.error) {
             return oauthError(res, 400, result.error);
@@ -561,14 +976,11 @@ exports.revoke = async function (req, res) {
     }
 
 
+    // Revocation must not depend on the client's metadata server.
+    // Validate the client ID syntax locally, then match it against
+    // the client ID stored with the token or refresh-token family.
     try {
         ClientMetadata.validateClientId(clientId);
-
-        const client = await fetchClient(clientId);
-
-        if (!client) {
-            return oauthError(res, 400, "invalid_client");
-        }
     } catch {
         return oauthError(res, 400, "invalid_client");
     }

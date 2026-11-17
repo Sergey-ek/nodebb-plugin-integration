@@ -98,6 +98,27 @@ Plugin.onTopicRestore = async function (data) {
     return Events.topicRestore(data);
 };
 
+
+Plugin.addProfileItem = async function (data) {
+
+    data.links.push({
+        id: "integration",
+        route: "integration",
+        icon: "fa-plug",
+        name: "Connected applications",
+        visibility: {
+            self: true,
+            other: false,
+            moderator: false,
+            globalMod: false,
+            admin: false,
+            canViewInfo: false
+        }
+    });
+
+    return data;
+};
+
 Plugin.addAdminNavigation = async function (header) {
     header.plugins.push({
         route: "/plugins/integration",

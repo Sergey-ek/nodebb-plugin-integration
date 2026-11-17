@@ -32,7 +32,17 @@ describe("OAuth storage contract", function () {
             "createRefreshFamily",
             "getRefreshFamily",
             "rotateRefreshToken",
-            "revokeRefreshFamily"
+            "revokeRefreshFamily",
+            "getUserAccess",
+            "setUserAccess",
+            "getClientGrant",
+            "listClientGrants",
+            "setClientGrant",
+            "revokeClientGrant",
+            "getConsentTransaction",
+"createConsentTransaction",
+            "approveConsentTransaction",
+            "consumeConsentTransaction"
         ]);
     });
 

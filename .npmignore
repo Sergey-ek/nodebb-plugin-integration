@@ -1,0 +1,7 @@
+# Local backups
+**/*.bak-*
+**/*.before-*
+.auth-mode-*/
+
+# Local OAuth test client
+/public/oauth-test-client.json

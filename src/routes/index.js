@@ -2,6 +2,7 @@
 
 const API = require("./api");
 const OAuthRoutes = require("./oauth");
+const OAuthClients = require("./oauth-clients");
 
 exports.init = function (router, middleware) {
     if (!router || !middleware) {
@@ -26,6 +27,19 @@ exports.init = function (router, middleware) {
     router.get(
         "/oauth/authorize",
         OAuthRoutes.authorize
+    );
+
+    router.get(
+        "/oauth/consent",
+        middleware.buildHeader,
+        OAuthRoutes.consent
+    );
+
+    router.post(
+        "/oauth/consent",
+        middleware.applyCSRF,
+        middleware.ensureLoggedIn,
+        OAuthRoutes.consentDecision
     );
 
     router.post(
@@ -73,6 +87,34 @@ exports.init = function (router, middleware) {
     for (const [path, handler] of Object.entries(routes)) {
         router.post(`${internal}/${path}`, API.internalAuth, handler);
     }
+
+    helpers.setupPageRoute(
+        router,
+        "/user/:userslug/integration",
+        [
+            middleware.exposeUid,
+            middleware.canViewUsers,
+            middleware.buildAccountData,
+            middleware.noIndexRemoteUser,
+            middleware.ensureLoggedIn,
+            middleware.checkAccountPermissions
+        ],
+        OAuthClients.render
+    );
+
+    router.post(
+        "/user/:userslug/integration/access",
+        middleware.applyCSRF,
+        middleware.ensureLoggedIn,
+        OAuthClients.setAccess
+    );
+
+    router.post(
+        "/user/:userslug/integration/revoke",
+        middleware.applyCSRF,
+        middleware.ensureLoggedIn,
+        OAuthClients.revoke
+    );
 
     helpers.setupAdminPageRoute(
         router,

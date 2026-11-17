@@ -9,7 +9,18 @@ const REQUIRED_METHODS = Object.freeze([
     "createRefreshFamily",
     "getRefreshFamily",
     "rotateRefreshToken",
-    "revokeRefreshFamily"
+    "revokeRefreshFamily",
+
+    "getUserAccess",
+    "setUserAccess",
+    "getClientGrant",
+    "listClientGrants",
+    "setClientGrant",
+    "revokeClientGrant",
+    "getConsentTransaction",
+"createConsentTransaction",
+    "approveConsentTransaction",
+    "consumeConsentTransaction"
 ]);
 
 function createStorage(adapter) {

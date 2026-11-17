@@ -19,6 +19,16 @@ function createApi(overrides = {}) {
             }
         },
         Tokens: { hashToken(token) { return `hash:${token}`; } },
+        Permissions: {
+            async getCurrentPermissionSnapshot() {
+                return {
+                    active: true,
+                    userAccessVersion: 1,
+                    grantVersion: 1,
+                    metadataFingerprint: "a".repeat(64)
+                };
+            }
+        },
         Search: { async searchText() { return []; } },
         Categories: {},
         Meta: { async getInfo() { return {}; } },
@@ -49,6 +59,7 @@ function createApi(overrides = {}) {
         "../config": deps.Config,
         "../oauth/storage/runtime": deps.OAuthStorage,
         "../oauth/tokens": deps.Tokens,
+        "../oauth/permissions": deps.Permissions,
         "../ai/search": deps.Search,
         "../nodebb/categories": deps.Categories,
         "../nodebb/meta": deps.Meta,
@@ -84,7 +95,13 @@ function request(body = {}) {
     };
 }
 
-async function runOAuthAuthentication({ record, family, storageError = false }) {
+async function runOAuthAuthentication({
+    record,
+    family,
+    storageError = false,
+    permissionSnapshot,
+    permissionError = false
+}) {
     const { API } = createApi({
         Config: { async get() {
             return { mcpEnabled: true, internalApiToken: "test-token", authMode: "oauth" };
@@ -95,6 +112,20 @@ async function runOAuthAuthentication({ record, family, storageError = false }) 
                 return {
                     async getAccessToken() { return record; },
                     async getRefreshFamily() { return family; }
+                };
+            }
+        },
+        Permissions: {
+            async getCurrentPermissionSnapshot() {
+                if (permissionError) {
+                    throw new Error("Permission storage unavailable");
+                }
+
+                return permissionSnapshot || {
+                    active: true,
+                    userAccessVersion: 1,
+                    grantVersion: 1,
+                    metadataFingerprint: "a".repeat(64)
                 };
             }
         }
@@ -163,11 +194,27 @@ describe("Internal API authentication", () => {
         const storage = {
             async getAccessToken(hash) {
                 assert.equal(hash, "hash:" + "A".repeat(43));
-                return { uid: 42, clientId, scopes: ["mcp"], familyId };
+                return {
+                    uid: 42,
+                    clientId,
+                    scopes: ["mcp"],
+                    familyId,
+                    userAccessVersion: 1,
+                    grantVersion: 1,
+                    metadataFingerprint: "a".repeat(64)
+                };
             },
             async getRefreshFamily(id) {
                 assert.equal(id, familyId);
-                return { uid: 42, clientId, scopes: ["mcp"], revoked: false };
+                return {
+                    uid: 42,
+                    clientId,
+                    scopes: ["mcp"],
+                    revoked: false,
+                    userAccessVersion: 1,
+                    grantVersion: 1,
+                    metadataFingerprint: "a".repeat(64)
+                };
             }
         };
         const { API } = createApi({
@@ -332,6 +379,127 @@ describe("Internal API authentication", () => {
 
         assert.equal(result.called, false);
         assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token after global MCP access is disabled", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "2".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: {
+                uid: 42, clientId, scopes: ["mcp"], familyId,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            family: {
+                uid: 42, clientId, scopes: ["mcp"], revoked: false,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            permissionSnapshot: {
+                active: false,
+                reason: "user_access_disabled"
+            }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token after its client grant is revoked", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "3".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: {
+                uid: 42, clientId, scopes: ["mcp"], familyId,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            family: {
+                uid: 42, clientId, scopes: ["mcp"], revoked: false,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            permissionSnapshot: {
+                active: false,
+                reason: "grant_disabled"
+            }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token with an outdated permission version", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "4".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: {
+                uid: 42, clientId, scopes: ["mcp"], familyId,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            family: {
+                uid: 42, clientId, scopes: ["mcp"], revoked: false,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            permissionSnapshot: {
+                active: true,
+                userAccessVersion: 2,
+                grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("rejects an OAuth token when CIMD metadata fingerprint changes", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "5".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: {
+                uid: 42, clientId, scopes: ["mcp"], familyId,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            family: {
+                uid: 42, clientId, scopes: ["mcp"], revoked: false,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            permissionSnapshot: {
+                active: true,
+                userAccessVersion: 1,
+                grantVersion: 1,
+                metadataFingerprint: "b".repeat(64)
+            }
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 401);
+    });
+
+    it("returns 503 when the current permission snapshot cannot be read", async () => {
+        const clientId = "https://client.example/metadata";
+        const familyId = "6".repeat(32);
+        const result = await runOAuthAuthentication({
+            record: {
+                uid: 42, clientId, scopes: ["mcp"], familyId,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            family: {
+                uid: 42, clientId, scopes: ["mcp"], revoked: false,
+                userAccessVersion: 1, grantVersion: 1,
+                metadataFingerprint: "a".repeat(64)
+            },
+            permissionError: true
+        });
+
+        assert.equal(result.called, false);
+        assert.equal(result.res.statusCode, 503);
     });
 
     it("returns 503 when OAuth storage is unavailable", async () => {

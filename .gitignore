@@ -6,3 +6,12 @@ npm-debug.log*
 
 # Local secrets
 .token-export.sh
+
+# Local backups
+*.bak-*
+*.before-*
+.auth-mode-*-backup/
+
+# Local OAuth test client
+public/oauth-test-client.json
+.auth-mode-*/

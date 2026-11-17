@@ -3,6 +3,7 @@
 const NodeBB = require("../../nodebb");
 const { createStorage } = require("./index");
 const { createRedisAdapter } = require("./redis");
+const { createRedisGrantAdapter } = require("./grants");
 
 function createStorageFromDatabase(database) {
     if (!database || typeof database !== "object") {
@@ -15,7 +16,13 @@ function createStorageFromDatabase(database) {
 
     // NodeBB Redis adapter exposes the native Redis v4 client.
     if (typeof database.client.sendCommand === "function") {
-        return createStorage(createRedisAdapter(database.client));
+        const oauthAdapter = createRedisAdapter(database.client);
+        const grantAdapter = createRedisGrantAdapter(database.client);
+
+        return createStorage({
+            ...oauthAdapter,
+            ...grantAdapter
+        });
     }
 
     if (typeof database.client.collection === "function") {

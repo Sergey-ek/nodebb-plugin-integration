@@ -12,6 +12,7 @@ const Users = require("../nodebb/users");
 const Privileges = require("../nodebb/privileges");
 const OAuthStorage = require("../oauth/storage/runtime");
 const Tokens = require("../oauth/tokens");
+const Permissions = require("../oauth/permissions");
 
 const OAUTH_SCOPES = Object.freeze(["mcp"]);
 const ACCESS_TOKEN_PATTERN = /^[A-Za-z0-9_-]{43}$/;
@@ -96,7 +97,13 @@ async function authenticateOAuthUser(req, res) {
             !Array.isArray(record.scopes) ||
             record.scopes.length !== OAUTH_SCOPES.length ||
             !OAUTH_SCOPES.every(scope => record.scopes.includes(scope)) ||
-            !FAMILY_ID_PATTERN.test(record.familyId || "")
+            !FAMILY_ID_PATTERN.test(record.familyId || "") ||
+            !Number.isSafeInteger(record.userAccessVersion) ||
+            record.userAccessVersion < 1 ||
+            !Number.isSafeInteger(record.grantVersion) ||
+            record.grantVersion < 1 ||
+            typeof record.metadataFingerprint !== "string" ||
+            !/^[a-f0-9]{64}$/.test(record.metadataFingerprint)
         ) {
             return unauthorized(res);
         }
@@ -111,7 +118,32 @@ async function authenticateOAuthUser(req, res) {
             !Array.isArray(family.scopes) ||
             !OAUTH_SCOPES.every(scope => family.scopes.includes(scope)) ||
             family.scopes.length !== record.scopes.length ||
-            !record.scopes.every(scope => family.scopes.includes(scope))
+            !record.scopes.every(scope => family.scopes.includes(scope)) ||
+            !Number.isSafeInteger(family.userAccessVersion) ||
+            family.userAccessVersion < 1 ||
+            !Number.isSafeInteger(family.grantVersion) ||
+            family.grantVersion < 1 ||
+            typeof family.metadataFingerprint !== "string" ||
+            !/^[a-f0-9]{64}$/.test(family.metadataFingerprint) ||
+            record.userAccessVersion !== family.userAccessVersion ||
+            record.grantVersion !== family.grantVersion ||
+            record.metadataFingerprint !== family.metadataFingerprint
+        ) {
+            return unauthorized(res);
+        }
+
+        const current = await Permissions.getCurrentPermissionSnapshot(
+            storage,
+            record.uid,
+            record.clientId
+        );
+
+        if (
+            !current ||
+            current.active !== true ||
+            current.userAccessVersion !== record.userAccessVersion ||
+            current.grantVersion !== record.grantVersion ||
+            current.metadataFingerprint !== record.metadataFingerprint
         ) {
             return unauthorized(res);
         }

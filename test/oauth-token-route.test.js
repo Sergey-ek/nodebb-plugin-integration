@@ -59,8 +59,10 @@ function createHarness(options = {}) {
         createdFamilies: [],
         createdAccessTokens: [],
         revokedFamilies: [],
+        revokedAccessTokens: [],
         rotations: [],
-        clientFetches: []
+        clientFetches: [],
+        permissionChecks: []
     };
 
     let codeConsumed = false;
@@ -78,6 +80,21 @@ function createHarness(options = {}) {
     const family = options.family || null;
 
     const storage = {
+        async getUserAccess(uid) {
+            assert.equal(uid, 42);
+            return { enabled: true, version: 1 };
+        },
+
+        async getClientGrant(uid, clientId) {
+            assert.equal(uid, 42);
+            assert.equal(clientId, CLIENT_ID);
+            return {
+                enabled: true,
+                version: 1,
+                metadataFingerprint: "a".repeat(64)
+            };
+        },
+
         async consumeAuthorizationCode(hash) {
             captured.consumedCodes.push(hash);
 
@@ -128,6 +145,18 @@ function createHarness(options = {}) {
 
         async getRefreshFamily(familyId) {
             return familyId === FAMILY_ID ? family : null;
+        },
+
+        async getAccessToken(hash) {
+            const record = options.accessRecord || null;
+            return record && hash === Tokens.hashToken(
+                options.accessToken || "A".repeat(43)
+            ) ? record : null;
+        },
+
+        async revokeAccessToken(hash) {
+            captured.revokedAccessTokens.push(hash);
+            return true;
         },
 
         async rotateRefreshToken(
@@ -198,6 +227,18 @@ function createHarness(options = {}) {
         },
         "../oauth/storage/runtime": {
             get: () => storage
+        },
+        "../oauth/permissions": {
+            getActivePermissionSnapshot: async (receivedStorage, uid, client) => {
+                captured.permissionChecks.push({ receivedStorage, uid, client });
+
+                return options.permissionSnapshot || {
+                    active: true,
+                    userAccessVersion: 1,
+                    grantVersion: 1,
+                    metadataFingerprint: "a".repeat(64)
+                };
+            }
         }
     });
 
@@ -209,6 +250,9 @@ function createFamily() {
         uid: 42,
         clientId: CLIENT_ID,
         scopes: ["mcp"],
+        userAccessVersion: 1,
+        grantVersion: 1,
+        metadataFingerprint: "a".repeat(64),
         currentTokenHash: Tokens.hashToken(REFRESH_TOKEN),
         usedTokenHashes: [],
         revoked: false,
@@ -232,6 +276,14 @@ function refreshRequest(overrides = {}) {
         grant_type: "refresh_token",
         client_id: CLIENT_ID,
         refresh_token: REFRESH_TOKEN,
+        ...overrides
+    });
+}
+
+function revokeRequest(token, overrides = {}) {
+    return createRequest({
+        token,
+        client_id: CLIENT_ID,
         ...overrides
     });
 }
@@ -264,9 +316,16 @@ describe("OAuth token endpoint", function () {
         assert.equal(accessRecord.clientId, CLIENT_ID);
         assert.equal(accessRecord.familyId, captured.createdFamilies[0].familyId);
         assert.deepStrictEqual(accessRecord.scopes, ["mcp"]);
+        assert.equal(accessRecord.userAccessVersion, 1);
+        assert.equal(accessRecord.grantVersion, 1);
+        assert.equal(accessRecord.metadataFingerprint, "a".repeat(64));
 
         assert.equal(familyRecord.uid, 42);
         assert.equal(familyRecord.clientId, CLIENT_ID);
+        assert.equal(familyRecord.userAccessVersion, 1);
+        assert.equal(familyRecord.grantVersion, 1);
+        assert.equal(familyRecord.metadataFingerprint, "a".repeat(64));
+        assert.equal(captured.permissionChecks.length, 1);
         assert.equal(
             familyRecord.currentTokenHash,
             Tokens.hashToken(res.body.refresh_token)
@@ -390,6 +449,20 @@ describe("OAuth token endpoint", function () {
             captured.createdAccessTokens[0].record.familyId,
             FAMILY_ID
         );
+        assert.equal(
+            captured.createdAccessTokens[0].record.userAccessVersion,
+            1
+        );
+        assert.equal(
+            captured.createdAccessTokens[0].record.grantVersion,
+            1
+        );
+        assert.equal(
+            captured.createdAccessTokens[0].record.metadataFingerprint,
+            "a".repeat(64)
+        );
+        assert.equal(captured.permissionChecks.length, 1);
+        assert.equal(captured.clientFetches.length, 1);
     });
 
     it("rejects reuse of an old refresh token and revokes its family", async function () {
@@ -448,6 +521,112 @@ describe("OAuth token endpoint", function () {
         assert.equal(captured.createdAccessTokens.length, 3);
         assert.deepStrictEqual(captured.revokedFamilies, [FAMILY_ID]);
         assert.equal(family.revoked, true);
+    });
+
+
+    it("does not rotate a refresh token when global user access is disabled", async function () {
+        const family = createFamily();
+        const { route, captured } = createHarness({
+            family,
+            permissionSnapshot: {
+                active: false,
+                reason: "user_access_disabled"
+            }
+        });
+        const res = createResponse();
+
+        await route.token(refreshRequest(), res);
+
+        assert.equal(res.statusCode, 400);
+        assert.equal(res.body.error, "invalid_grant");
+        assert.equal(captured.permissionChecks.length, 1);
+        assert.equal(captured.rotations.length, 0);
+        assert.equal(captured.createdAccessTokens.length, 0);
+        assert.equal(family.revoked, false);
+    });
+
+    it("does not rotate a refresh token when its client grant is revoked", async function () {
+        const family = createFamily();
+        const { route, captured } = createHarness({
+            family,
+            permissionSnapshot: {
+                active: false,
+                reason: "grant_disabled"
+            }
+        });
+        const res = createResponse();
+
+        await route.token(refreshRequest(), res);
+
+        assert.equal(res.statusCode, 400);
+        assert.equal(res.body.error, "invalid_grant");
+        assert.equal(captured.rotations.length, 0);
+        assert.equal(captured.createdAccessTokens.length, 0);
+        assert.equal(family.revoked, false);
+    });
+
+    it("does not rotate a refresh token when the CIMD fingerprint changes", async function () {
+        const family = createFamily();
+        const { route, captured } = createHarness({
+            family,
+            permissionSnapshot: {
+                active: true,
+                userAccessVersion: 1,
+                grantVersion: 1,
+                metadataFingerprint: "b".repeat(64)
+            }
+        });
+        const res = createResponse();
+
+        await route.token(refreshRequest(), res);
+
+        assert.equal(res.statusCode, 400);
+        assert.equal(res.body.error, "invalid_grant");
+        assert.equal(captured.rotations.length, 0);
+        assert.equal(captured.createdAccessTokens.length, 0);
+        assert.equal(family.revoked, false);
+    });
+
+    it("revokes a refresh family without fetching CIMD metadata", async function () {
+        const family = createFamily();
+        const { route, captured } = createHarness({
+            family,
+            fetchError: true
+        });
+        const res = createResponse();
+
+        await route.revoke(revokeRequest(REFRESH_TOKEN), res);
+
+        assert.equal(res.statusCode, 200);
+        assert.deepStrictEqual(res.body, {});
+        assert.equal(captured.clientFetches.length, 0);
+        assert.deepStrictEqual(captured.revokedFamilies, [FAMILY_ID]);
+    });
+
+    it("revokes an access-token family without fetching CIMD metadata", async function () {
+        const accessToken = "A".repeat(43);
+        const accessRecord = {
+            uid: 42,
+            clientId: CLIENT_ID,
+            familyId: FAMILY_ID
+        };
+        const { route, captured } = createHarness({
+            fetchError: true,
+            accessToken,
+            accessRecord
+        });
+        const res = createResponse();
+
+        await route.revoke(revokeRequest(accessToken), res);
+
+        assert.equal(res.statusCode, 200);
+        assert.deepStrictEqual(res.body, {});
+        assert.equal(captured.clientFetches.length, 0);
+        assert.deepStrictEqual(captured.revokedFamilies, [FAMILY_ID]);
+        assert.deepStrictEqual(
+            captured.revokedAccessTokens,
+            [Tokens.hashToken(accessToken)]
+        );
     });
 
     it("rejects requests without form URL-encoded content type", async function () {
