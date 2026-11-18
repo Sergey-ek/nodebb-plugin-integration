@@ -8,6 +8,11 @@
 - Added an explicit user consent flow and automatic client registration after approval.
 - Added MCP access management to the user profile, including global access control and per-client revocation.
 - Added refresh token rotation and replay detection.
+- Added OAuth storage adapters for Redis, MongoDB and PostgreSQL.
+
+### Testing
+- Redis storage adapter verified.
+- MongoDB and PostgreSQL adapters implemented; live integration testing has not yet been performed.
 
 ### Security
 - Added permission and grant validation for OAuth-authenticated MCP requests.
