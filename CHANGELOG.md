@@ -1,6 +1,6 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.3] - 2026-11-19
 
 ### Added
 - Added OAuth 2.0 Protected Resource Metadata support according to RFC 9728.
