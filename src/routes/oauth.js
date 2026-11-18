@@ -428,6 +428,31 @@ exports.authorizationServerMetadata = async function (req, res) {
     }
 };
 
+exports.protectedResourceMetadata = async function (req, res) {
+    try {
+        const issuer = Meta.getPublicUrl();
+
+        const metadata = {
+            resource: `${issuer}/mcp`,
+            authorization_servers: [issuer],
+            scopes_supported: ["mcp"],
+            bearer_methods_supported: ["header"]
+        };
+
+        setNoStore(res);
+        return res.json(metadata);
+    } catch (error) {
+        console.error(
+            "[Integration] OAuth protected resource discovery failed:",
+            error
+        );
+
+        return res.status(500).json({
+            error: "Protected resource metadata unavailable"
+        });
+    }
+};
+
 async function issueAuthorizationCode(storage, record) {
     for (let attempt = 0; attempt < 3; attempt += 1) {
         const candidate = Tokens.generateToken();

@@ -28,6 +28,7 @@ async function withOAuthHttpServer(authorization, fetchImpl, requestOptions = {}
             nodebbUrl: "http://127.0.0.1:4567",
             internalApiToken: "internal-secret",
             authMode: "oauth",
+            resourceMetadataUrl: "http://127.0.0.1/.well-known/oauth-protected-resource/mcp",
             host: "127.0.0.1",
             port
         });
@@ -137,6 +138,7 @@ async function withConcurrentOAuthHttpRequests(authorizations, fetchImpl) {
             nodebbUrl: "http://127.0.0.1:4567",
             internalApiToken: "internal-secret",
             authMode: "oauth",
+            resourceMetadataUrl: "http://127.0.0.1/.well-known/oauth-protected-resource/mcp",
             host: "127.0.0.1",
             port
         });
@@ -299,7 +301,7 @@ describe("MCP server OAuth HTTP authentication", () => {
 
         assert.equal(result.statusCode, 401);
         assert.equal(fetchCalled, false);
-        assert.equal(result.headers["www-authenticate"], "Bearer");
+        assert.equal(result.headers["www-authenticate"], 'Bearer resource_metadata="http://127.0.0.1/.well-known/oauth-protected-resource/mcp"');
         assert.equal(result.headers["cache-control"], "no-store");
     });
 
@@ -329,7 +331,7 @@ describe("MCP server OAuth HTTP authentication", () => {
         assert.equal(receivedOptions.headers.Authorization, "Bearer internal-secret");
         assert.equal(receivedOptions.headers["X-MCP-User-Token"], userToken);
         assert.equal(result.statusCode, 401);
-        assert.equal(result.headers["www-authenticate"], "Bearer");
+        assert.equal(result.headers["www-authenticate"], 'Bearer resource_metadata="http://127.0.0.1/.well-known/oauth-protected-resource/mcp"');
         assert.equal(result.headers["cache-control"], "no-store");
     });
 
@@ -444,7 +446,7 @@ describe("MCP server OAuth HTTP authentication", () => {
         );
 
         assert.equal(secondResult.statusCode, 401);
-        assert.equal(secondResult.headers["www-authenticate"], "Bearer");
+        assert.equal(secondResult.headers["www-authenticate"], 'Bearer resource_metadata="http://127.0.0.1/.well-known/oauth-protected-resource/mcp"');
         assert.equal(secondResult.headers["cache-control"], "no-store");
         assert.equal(validationCalls, 2);
     });
@@ -523,6 +525,7 @@ describe("MCP server authentication mode", () => {
     const baseConfig = {
         nodebbUrl: "http://127.0.0.1:4567",
         internalApiToken: "i".repeat(32),
+        resourceMetadataUrl: "http://127.0.0.1/.well-known/oauth-protected-resource/mcp",
         host: "127.0.0.1",
         port: 3100
     };

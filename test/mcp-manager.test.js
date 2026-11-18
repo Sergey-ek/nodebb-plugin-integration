@@ -175,6 +175,11 @@ describe("MCP manager", () => {
                     return fakeChild;
                 }
             },
+            "../nodebb/meta": {
+                getPublicUrl() {
+                    return "https://example.test";
+                }
+            },
             "../config": {
                 async get() {
                     return {

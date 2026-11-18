@@ -25,6 +25,11 @@ exports.init = function (router, middleware) {
     );
 
     router.get(
+        "/.well-known/oauth-protected-resource/mcp",
+        OAuthRoutes.protectedResourceMetadata
+    );
+
+    router.get(
         "/oauth/authorize",
         OAuthRoutes.authorize
     );

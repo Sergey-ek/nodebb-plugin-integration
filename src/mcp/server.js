@@ -142,6 +142,35 @@ function validateConfig(config) {
         throw new Error("MCP bearer token is missing");
     }
 
+    let resourceMetadataUrl = "";
+
+    if (authMode === "oauth") {
+        if (typeof config.resourceMetadataUrl !== "string") {
+            throw new Error("OAuth resource metadata URL is missing");
+        }
+
+        let metadataUrl;
+
+        try {
+            metadataUrl = new URL(config.resourceMetadataUrl);
+        } catch {
+            throw new Error("OAuth resource metadata URL is invalid");
+        }
+
+        if (
+            !["http:", "https:"].includes(metadataUrl.protocol) ||
+            !metadataUrl.hostname ||
+            metadataUrl.username ||
+            metadataUrl.password ||
+            metadataUrl.search ||
+            metadataUrl.hash
+        ) {
+            throw new Error("OAuth resource metadata URL is invalid");
+        }
+
+        resourceMetadataUrl = metadataUrl.toString();
+    }
+
     if (typeof config.host !== "string" || !config.host.trim()) {
         throw new Error("MCP bind address is missing");
     }
@@ -157,6 +186,7 @@ function validateConfig(config) {
         internalApiToken: config.internalApiToken,
         authMode,
         bearerToken: authMode === "legacy" ? config.bearerToken : "",
+        resourceMetadataUrl,
         host: config.host.trim(),
         port
     };
@@ -239,7 +269,8 @@ async function start(rawConfig) {
                 if (!match) {
                     res.writeHead(401, {
                         "Content-Type": "application/json",
-                        "WWW-Authenticate": "Bearer",
+                        "WWW-Authenticate":
+                            `Bearer resource_metadata="${config.resourceMetadataUrl}"`,
                         "Cache-Control": "no-store"
                     });
                     res.end(JSON.stringify({ error: "Unauthorized" }));
@@ -276,7 +307,10 @@ async function start(rawConfig) {
                     res.writeHead(status, {
                         "Content-Type": "application/json",
                         ...(status === 401
-                            ? { "WWW-Authenticate": "Bearer" }
+                            ? {
+                                "WWW-Authenticate":
+                                    `Bearer resource_metadata="${config.resourceMetadataUrl}"`
+                            }
                             : {}),
                         "Cache-Control": "no-store"
                     });

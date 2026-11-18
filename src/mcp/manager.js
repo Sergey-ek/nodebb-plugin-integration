@@ -3,6 +3,7 @@
 const path = require("node:path");
 const { fork } = require("node:child_process");
 const Config = require("../config");
+const Meta = require("../nodebb/meta");
 
 const SERVER_PATH = path.join(__dirname, "server.js");
 const CHECK_INTERVAL = 3000;
@@ -257,6 +258,7 @@ function startChild(config, signature) {
                 bearerToken: (config.authMode || "legacy") === "legacy"
                     ? config.mcpBearerToken
                     : "",
+                resourceMetadataUrl: config.resourceMetadataUrl || "",
                 host: config.mcpHost,
                 port: config.mcpPort
             }
@@ -285,6 +287,9 @@ async function syncConfiguration() {
     }
 
     const authMode = config.authMode || "legacy";
+    const publicUrl = Meta.getPublicUrl();
+    const resourceMetadataUrl =
+        `${publicUrl}/.well-known/oauth-protected-resource/mcp`;
 
     if (
         (authMode === "legacy" && !config.mcpBearerToken) ||
@@ -303,6 +308,7 @@ async function syncConfiguration() {
         internalApiToken: config.internalApiToken,
         authMode,
         bearerToken: authMode === "legacy" ? config.mcpBearerToken : "",
+        publicUrl,
         host: config.mcpHost,
         port: config.mcpPort
     });
@@ -317,7 +323,7 @@ async function syncConfiguration() {
     }
 
     console.log("[NodeBB Integration] Starting MCP process");
-    startChild(config, signature);
+    startChild({ ...config, resourceMetadataUrl }, signature);
 }
 
 function refresh() {

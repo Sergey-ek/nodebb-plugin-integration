@@ -1,5 +1,23 @@
 # Changelog
 
+## [Unreleased]
+
+### Added
+- Added OAuth 2.0 Protected Resource Metadata support according to RFC 9728.
+- Added the `/.well-known/oauth-protected-resource/mcp` endpoint.
+- Added resource metadata discovery information to OAuth MCP authentication challenges.
+
+### Fixed
+- Fixed OAuth MCP authentication challenges to include the `resource_metadata` parameter for protected resource discovery.
+- Added validation of the protected resource metadata URL passed to the MCP server.
+- Ensured the MCP child process is restarted when the public NodeBB URL changes.
+
+### Testing
+- Added tests for Protected Resource Metadata discovery and OAuth authentication challenges.
+- Added tests for metadata URL validation and MCP manager configuration.
+- Verified backward compatibility with Legacy Bearer authentication.
+
+
 ## [0.6.2] - 2026-11-17
 
 ### Added
