@@ -126,6 +126,38 @@ The default bind address restricts the MCP listener to localhost. Change it only
 
 When exposing MCP through a reverse proxy, publish the external `/mcp` endpoint over HTTPS.
 
+### Nginx reverse proxy
+
+Add this location inside the existing HTTPS `server` block for your forum. Keep the regular NodeBB proxy location (usually `location /`) so that the OAuth authorization and metadata endpoints continue to be handled by NodeBB.
+
+```nginx
+location = /mcp {
+    proxy_pass http://nodebb:3100;
+    proxy_http_version 1.1;
+
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_set_header Connection "";
+
+    # Required for MCP Streamable HTTP responses.
+    proxy_buffering off;
+    proxy_request_buffering off;
+    proxy_cache off;
+
+    # Allow long-running MCP requests and streams.
+    proxy_read_timeout 3600s;
+    proxy_send_timeout 3600s;
+}
+```
+
+The example assumes that Nginx and the NodeBB container are connected to the same Docker network and that the MCP process is reachable as `nodebb:3100`. In the plugin ACP, set **Bind address** to `0.0.0.0` for this container-to-container setup. Do not publish port 3100 to the public host; keep it accessible only on the private Docker network.
+
+If Nginx runs directly on the same host and shares the host network namespace with the MCP process, use `proxy_pass http://127.0.0.1:3100;` and keep **Bind address** set to `127.0.0.1`.
+
+The location is an exact match and the `proxy_pass` directive has no URI suffix, so Nginx forwards the original `/mcp` path unchanged. Do not route the OAuth `/.well-known` endpoints to port 3100; they are served by NodeBB through the regular forum proxy location.
+
 The plugin automatically generates a separate random token for its internal API. This token is used only between the MCP process and the NodeBB plugin. It is distinct from the client access token and must never be shared with MCP clients.
 
 In OAuth mode, users manage their MCP access and revoke individual client grants from their NodeBB account page:
