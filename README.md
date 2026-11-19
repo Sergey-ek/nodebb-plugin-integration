@@ -158,6 +158,8 @@ If Nginx runs directly on the same host and shares the host network namespace wi
 
 The location is an exact match and the `proxy_pass` directive has no URI suffix, so Nginx forwards the original `/mcp` path unchanged. Do not route the OAuth `/.well-known` endpoints to port 3100; they are served by NodeBB through the regular forum proxy location.
 
+Keep your existing ACME HTTP-01 challenge handling for `/.well-known/acme-challenge/` unchanged (for example, the Certbot webroot or standalone configuration). Do not route ACME challenge requests to the MCP port. The OAuth metadata paths, such as `/.well-known/oauth-authorization-server` and `/.well-known/oauth-protected-resource/mcp`, are separate from the ACME challenge path.
+
 The plugin automatically generates a separate random token for its internal API. This token is used only between the MCP process and the NodeBB plugin. It is distinct from the client access token and must never be shared with MCP clients.
 
 In OAuth mode, users manage their MCP access and revoke individual client grants from their NodeBB account page:
